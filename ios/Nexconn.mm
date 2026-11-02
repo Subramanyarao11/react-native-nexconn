@@ -1,10 +1,11 @@
 #import "Nexconn.h"
 
 @implementation Nexconn
-- (NSNumber *)multiply:(double)a b:(double)b {
-  NSNumber *result = @(a * b);
 
-  return result;
+- (void)getIntegrationStatus:(RCTPromiseResolveBlock)resolve
+                     reject:(RCTPromiseRejectBlock)reject
+{
+  resolve(@"{\"platform\":\"ios\",\"nativeModuleLinked\":true,\"sdkIntegrated\":false}");
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:

@@ -1,6 +1,6 @@
 {
   "name": "react-native-nexconn",
-  "version": "0.1.0",
+  "version": "0.0.0-development",
   "description": "Community React Native Chat SDK for Nexconn, supporting Community CLI and Expo development builds.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -36,7 +36,12 @@
     "clean": "del-cli lib",
     "prepare": "bob build",
     "typecheck": "tsc",
-    "lint": "eslint \"**/*.{js,ts,tsx}\""
+    "lint": "eslint \"**/*.{js,ts,tsx}\"",
+    "example:expo": "yarn workspace react-native-nexconn-example",
+    "example:cli": "yarn workspace react-native-nexconn-cli-example",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
+    "build": "bob build",
+    "check": "yarn test && yarn typecheck && yarn lint && yarn build"
   },
   "keywords": [
     "react-native",
@@ -48,7 +53,7 @@
     "url": "git+https://github.com/Subramanyarao11/react-native-nexconn.git"
   },
   "author": "Subramanya <90202645+Subramanyarao11@users.noreply.github.com> (https://github.com/Subramanyarao11)",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "bugs": {
     "url": "https://github.com/Subramanyarao11/react-native-nexconn/issues"
   },
@@ -76,11 +81,12 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "react": "*",
-    "react-native": "*"
+    "react": "^19.3.0",
+    "react-native": "0.88.x"
   },
   "workspaces": [
-    "example"
+    "example",
+    "example-cli"
   ],
   "packageManager": "yarn@4.18.1",
   "react-native-builder-bob": {
@@ -123,5 +129,6 @@
       "eslint"
     ],
     "version": "0.64.0"
-  }
+  },
+  "private": true
 }

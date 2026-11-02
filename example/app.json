@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Nexconn Example",
+    "name": "Nexconn Expo Example",
     "slug": "react-native-nexconn-example",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "nexconn.example"
+      "bundleIdentifier": "com.subramanyarao.nexconn.expo"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +17,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "nexconn.example"
+      "package": "com.subramanyarao.nexconn.expo"
     },
     "web": {
       "favicon": "./assets/favicon.png"

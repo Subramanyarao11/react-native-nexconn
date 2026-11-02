@@ -1,1 +1,2 @@
-export { multiply } from './multiply';
+export { getIntegrationStatus } from './getIntegrationStatus';
+export type { IntegrationStatus } from './diagnostics';
