@@ -65,7 +65,7 @@ Nexconn publishes Android Gradle dependencies and iOS CocoaPods/SPM integration 
 
 ## Skills inspected and recommended
 
-The following skill files were inspected at their source repositories. They are planning references, not globally installed skills in this chat. The curated installer catalog returned an authentication error, so source inspection was used instead.
+The following five skills are installed in the repository's `.agents/skills` directory for local and cloud tasks. Their pinned source revisions and third-party notices are recorded alongside them. They are project-local rather than globally installed skills.
 
 | Skill | Role in this project | Priority |
 | --- | --- | --- |
@@ -79,17 +79,19 @@ Use the Callstack library scaffold for a general React Native package. Its guida
 
 Do not combine Expo Modules, Nitro, and TurboModules merely because skills exist for each. Pick one native integration approach. A TurboModule library can support an Expo development build without making the core API Expo-specific. [Library tooling](https://oss.callstack.com/react-native-builder-bob/create), [Expo development builds](https://docs.expo.dev/workflow/customizing/).
 
-When implementation starts, install only the selected skills through the available skill installer and record their source revisions. Treat official framework documentation and actual installed package source as the authority when a skill is stale.
+The selected skills were installed through the skill installer. Treat official framework documentation and actual installed package source as the authority when a skill is stale.
 
 ## Toolchain and compatibility
 
 ### Cloud execution and CLI/Expo support
 
-User preference under discussion: execute development remotely rather than using the local Mac for builds. The current chat still executes on the Mac. A read-only account check confirmed Plus access and found no configured Codex Cloud environments; no cloud task has been started.
+Agreed workflow: develop remotely and use the Mac periodically for native testing. The private repository `Subramanyarao11/react-native-nexconn` contains the TurboModule bootstrap and separate CLI and Expo examples. The current coordination chat still executes on the Mac. A private cloud environment is configured, but publication failed on 2 November and it still reports `runnable=false` on 3 November. Resolve publication before starting implementation there.
 
 Codex Cloud is available on Plus within the plan's shared usage allowance. Local and cloud work share that allowance, and long cloud tasks can consume it faster. This does not include third-party build-service plans. [Official pricing and usage guidance](https://learn.chatgpt.com/docs/pricing).
 
-Create a private GitHub repository, then use **Work in > Cloud > Select environment > Create environment**. Connect that repository, let setup prepare and test the tools, and publish the environment before starting the implementation task. Repository-local skills should travel with the project because personal local skills are not synced automatically. [Cloud setup](https://learn.chatgpt.com/docs/environments/cloud-environments).
+Cloud onboarding installed dependencies with Yarn 4.18.1 and passed both diagnostic tests, TypeScript, ESLint and the Bob package build. It generated an untracked lockfile that must be reviewed and committed. Native builds and real Nexconn messaging remain unverified. Repository-local skills travel with the project because personal local skills are not synced automatically. [Cloud setup](https://learn.chatgpt.com/docs/environments/cloud-environments).
+
+The documented Plus VM defaults are 2 vCPUs, 8 GiB memory and 8 GiB disk, not measured hardware for this checkout. Do not rely on this environment for iOS Simulator or Android emulator testing: use the Mac or appropriately configured native CI. Android acceleration support in the managed VM is unverified. [VM specifications](https://learn.chatgpt.com/docs/environments/cloud-environments#vm-specifications).
 
 Use this division of work:
 

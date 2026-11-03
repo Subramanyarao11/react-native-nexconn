@@ -3,6 +3,26 @@
 Use only the private repository Subramanyarao11/react-native-nexconn.
 Keep environment access private to the owner. Do not add production credentials.
 
+## Verified setup status, 2 November 2026
+
+The private environment is named `react-native-nexconn`. Cloud onboarding
+installed dependencies using Yarn 4.18.1, then passed the two diagnostic tests,
+TypeScript, ESLint and the Bob package build. It left tracked files unchanged
+and generated an untracked `yarn.lock`; review and commit that lockfile during
+the first implementation task. Peer-dependency warnings remain unresolved.
+The 2 November publication attempt failed with "Couldn't publish environment"
+and "Your settings are saved. Try publishing again." The saved environment is
+still not runnable when checked on 3 November. No cloud implementation task has
+started. Native builds and live Nexconn behavior remain unverified.
+
+The documented Plus defaults are 2 vCPUs, 8 GiB RAM and 8 GiB disk. These are
+plan defaults, not a measurement of this VM. Use the Mac for iOS Simulator and
+Android emulator testing at native milestones; Android virtualization support
+has not been verified in the cloud environment. See the [official VM
+specifications](https://learn.chatgpt.com/docs/environments/cloud-environments#vm-specifications).
+
+## Reproducing the setup
+
 Prepare Node 24.22.x or another compatible Node 24 patch, then run from repo root:
 
 ```sh
