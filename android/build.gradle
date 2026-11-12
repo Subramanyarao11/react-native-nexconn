@@ -31,6 +31,14 @@ android {
   }
 }
 
+// Resolves the SDK for this module. Gradle resolves the app's own classpath
+// with the app's repositories, so consumers must declare this repository too
+// (the Expo config plugin does that; see the README for Community CLI apps).
+repositories {
+  maven { url "https://maven.nexconn.ai/repository/maven-releases/" }
+}
+
 dependencies {
   implementation "com.facebook.react:react-android"
+  implementation "ai.nexconn.chat:chat:26.4.2"
 }

@@ -1,5 +1,5 @@
 #import <NexconnSpec/NexconnSpec.h>
 
-@interface Nexconn : NSObject <NativeNexconnSpec>
+@interface Nexconn : NativeNexconnSpecBase <NativeNexconnSpec>
 
 @end

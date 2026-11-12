@@ -2,6 +2,8 @@ export type IntegrationStatus = Readonly<{
   platform: 'android' | 'ios' | 'unsupported';
   nativeModuleLinked: boolean;
   sdkIntegrated: boolean;
+  /** Version reported by the linked native Nexconn SDK, when integrated. */
+  sdkVersion?: string;
 }>;
 
 /** Validate the native boundary rather than trusting an unchecked JSON cast. */
@@ -23,5 +25,8 @@ export function decodeIntegrationStatus(payload: string): IntegrationStatus {
     platform: record.platform,
     nativeModuleLinked: record.nativeModuleLinked,
     sdkIntegrated: record.sdkIntegrated,
+    ...(typeof record.sdkVersion === 'string'
+      ? { sdkVersion: record.sdkVersion }
+      : {}),
   };
 }

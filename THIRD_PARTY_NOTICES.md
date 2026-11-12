@@ -6,6 +6,8 @@ in .agents/skills were copied from the maintainer repositories at the revisions
 recorded in .agents/skills/SOURCES.md; their license texts are retained alongside
 them. Our project license does not restrict independently reusable upstream code.
 
-Nexconn and RongCloud SDK binaries have not been vendored into this repository.
-Any future native dependency retains its vendor license. Review those terms
+Nexconn and RongCloud SDK binaries are not vendored into this repository or the
+package. The official Nexconn Chat SDK 26.4.2 is declared as a Gradle and
+CocoaPods dependency and downloaded from Nexconn at build time; it retains its
+vendor license. Review those terms
 before distributing a wrapper or shipping a consumer app.

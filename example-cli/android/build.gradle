@@ -18,4 +18,11 @@ buildscript {
     }
 }
 
+allprojects {
+    repositories {
+        // Required by react-native-nexconn for the official Nexconn Chat SDK.
+        maven { url "https://maven.nexconn.ai/repository/maven-releases/" }
+    }
+}
+
 apply plugin: "com.facebook.react.rootproject"
