@@ -36,9 +36,9 @@ the example Gemfile).
 | Community CLI, iOS: `pod install` + `xcodebuild` Debug, simulator arm64 | Pass |
 | Community CLI, iOS: launch on iPhone 17 Pro simulator | App starts; bridge reports `{"platform":"ios","nativeModuleLinked":true,"sdkIntegrated":true,"sdkVersion":"26.4.2"}` |
 | Expo: `expo-dev-client` installed, `expo prebuild` | Pass; plugin wrote the Maven repository into `android/build.gradle` |
-| Expo, Android: `./gradlew assembleDebug` | **Not completed**: the Mac ran out of disk space during the build. No compile error from this package appeared before it stopped |
+| Expo, Android: `./gradlew assembleDebug` | **Not completed**: the first attempt ran out of disk space and the second was stopped before finishing. No compile error from this package appeared in either |
 | Expo, iOS: `pod install` | Pass; `NexconnChat 26.4.2` installed |
-| Expo, iOS: `xcodebuild` Debug, simulator | **Not completed**: failed copying frameworks with "No space left on device". Compilation had not reported errors before that |
+| Expo, iOS: `xcodebuild` Debug, simulator | **Fails in Expo's own code**: `expo-modules-jsi` 58.0.23 (`JavaScriptObject.swift:946`, "sending 'slot' risks causing data races") under Xcode 26.1.1 / Swift 6.2.1. This package's files reported no errors |
 | `yarn pack` contents | Native sources, `lib/`, `src/`, podspec and plugin present; no vendor binaries |
 
 The tests use a controllable fake transport. They cover the wrapper's own
@@ -50,8 +50,9 @@ say nothing about the Nexconn service.
 - **No call has reached the Nexconn service.** `initialize`, `connect`, send
   and receive have never run with a real App Key or token. Nothing here is
   evidence that messaging works.
-- Both Expo native builds. They need several GB of free disk; rerun them
-  after freeing space.
+- Both Expo native builds. Android needs several GB of free disk. iOS needs
+  an Xcode that Expo SDK 58 compiles with; its changelog is written against
+  Xcode 27.
 - Android has only been compiled. No emulator or device was available, so the
   Android app has not been launched.
 - Initialization from JavaScript instead of application startup (see
@@ -74,6 +75,12 @@ say nothing about the Nexconn service.
   (`0.0.0`). The npm version is unchanged.
 - The cloud environment from the earlier setup was not used for this work and
   was still reported as not runnable on 10 November.
+
+## Paused
+
+Work on the SDK is paused as of 12 November 2026 because the Mac is short on
+disk space. Resume from "Not verified" and "Next" below. The earlier planning
+documents are in this folder, including `PROJECT_HANDOVER.md`.
 
 ## Needed for live verification
 

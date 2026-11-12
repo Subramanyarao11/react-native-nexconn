@@ -78,7 +78,8 @@ yarn example:expo start
 yarn example:cli start
 ```
 
-See docs/BUILD_PLAN.md for the complete plan, docs/CLOUD_SETUP.md for remote
+See docs/BUILD_PLAN.md for the complete plan, docs/PROJECT_HANDOVER.md for the
+project background, docs/CLOUD_SETUP.md for remote
 setup, docs/API_EVIDENCE.md for the native API inventory, and docs/STATUS.md
 for actual verification. For the generated development
 workflow read CONTRIBUTING.md. There is no Expo dependency in the core library.
