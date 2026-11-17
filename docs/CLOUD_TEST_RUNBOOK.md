@@ -1,8 +1,8 @@
 # Cloud test runbook
 
-Everything below still needs running on the cloud VMs (Ubuntu for JS and
-Android, macOS for iOS). Record results in docs/STATUS.md. A green build is
-not evidence that messaging works; the live checklist at the end is.
+Run these checks on cloud VMs (Ubuntu for JS and Android, macOS for iOS).
+See [implementation status](STATUS.md) for verified results. A green build
+is not evidence that messaging works; the live checklist at the end is.
 
 ## 0. Prerequisites
 
@@ -11,9 +11,18 @@ not evidence that messaging works; the live checklist at the end is.
 | Node | 24.x (`.nvmrc`) | 24.x |
 | Yarn | committed `.yarn/releases/yarn-4.18.1.cjs` (no global yarn needed) | same |
 | Java | JDK 17 | JDK 17 (only for Android on Mac) |
-| Android | SDK platform 36 + 37, build-tools 37.0.0, NDK 27.1.12297006, `ANDROID_HOME` set | optional |
+| Android | SDK platforms `android-36` + `android-37.0`, build-tools 37.0.0, NDK 27.1.12297006, `ANDROID_HOME` set | optional |
 | iOS | — | Xcode 26.x, iOS 26 simulator runtime, CocoaPods ≥ 1.16 |
-| Network | registry.npmjs.org, maven.google.com, repo.maven.apache.org, **maven.nexconn.ai**, cdn.cocoapods.org, **downloads.nexconn.ai** | same |
+| Network | registry.npmjs.org, dl.google.com, maven.google.com, repo.maven.apache.org, plugins.gradle.org, services.gradle.org, **maven.nexconn.ai**, cdn.cocoapods.org, **downloads.nexconn.ai** | same |
+
+With Android SDK Command-line Tools on `PATH` and `ANDROID_HOME` pointing to
+the SDK directory, review and accept the SDK licenses, then install the packages:
+
+```sh
+sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-36" "platforms;android-37.0" \
+  "build-tools;37.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+```
 
 For live tests you also need: a Nexconn test App Key (+ data center), its App
 Secret on the token server only, two test user ids, and (for push) FCM/APNs
@@ -30,21 +39,17 @@ Bob build, Codegen schema + spec generation for both platforms, `yarn pack`
 (fails if vendor binaries are packed). Already passing on the dev Mac except
 the Codegen-generation and pack steps, which were run separately and passed.
 
-## 2. Android native builds (Ubuntu) — first compile of the Kotlin bridge
+## 2. Android native builds (Ubuntu)
 
 ```sh
 bash scripts/cloud/verify-android.sh cli    # Community CLI fixture debug + release (R8)
 bash scripts/cloud/verify-android.sh expo   # Expo prebuild (x2, idempotency) + debug build
 ```
 
-Expected first-compile risks (none could be compiled locally):
-
-- Kotlin property names on SDK classes (taken from bytecode field names) and
-  nullability of SDK parameters (taken from `@Nullable/@NotNull` annotations).
-- `NexconnCustomSlot.decodeFields(fields: Map<String, Any?>)` override
-  signature (taken from the official custom-message docs).
-- Release build: R8 with `android/consumer-rules.pro` (keeps SDK getters for
-  the reflection serializer).
+When upgrading the Nexconn SDK, check Kotlin property names, nullability,
+and the `NexconnCustomSlot.decodeFields` override against the pinned AAR.
+The CLI release build runs R8 with `android/consumer-rules.pro` to keep
+SDK getters used by the reflection serializer.
 
 Run on an emulator after the build:
 
@@ -103,6 +108,50 @@ Starts `examples/token-server`, checks that unauthenticated or wrong-password
 requests get 401, that each signed-in user receives a real Nexconn token bound
 to their own id, and that logout invalidates the session. Prints only token
 lengths. Skipped automatically when the variables are missing.
+
+## 5c. Expo release builds
+
+Debug builds alone do not prove release behavior (R8 keep rules on Android,
+Release Swift optimization on iOS).
+
+```sh
+# Android (Ubuntu)
+(cd example && npx expo prebuild --platform android --clean --no-install)
+(cd example/android && ./gradlew --no-daemon --console=plain \
+   -PreactNativeArchitectures=arm64-v8a,x86_64 assembleRelease)
+ls -la example/android/app/build/outputs/apk/release/
+
+# iOS (macOS)
+(cd example && npx expo prebuild --platform ios --clean)
+WS="$(ls -d example/ios/*.xcworkspace | head -1)"
+xcodebuild -workspace "$WS" -scheme "$(basename "$WS" .xcworkspace)" -configuration Release \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build | tail -40
+```
+
+Then install the release build on an emulator/simulator and run L1, L3 and
+L16 from the live checklist against it.
+
+## Next cloud session (planned)
+
+Status at handover (18 November 2026): JS, Android CLI/Expo debug + CLI
+release, packed consumers on Android and the live token test have passed on
+Ubuntu (see STATUS.md). iOS (`verify-ios.sh`) is running on the macOS VM.
+
+Run, in this order, and record each result in STATUS.md:
+
+1. Finish iOS: `bash scripts/cloud/verify-ios.sh all`, then
+   `BUILD_NATIVE=ios bash scripts/cloud/verify-packed-consumers.sh`.
+   Report Swift compile errors with the full `xcodebuild` error lines.
+2. Expo release builds: section 5c (Android and iOS).
+3. Two-user live check: start the token server with two demo users (5b env
+   vars plus `DEMO_USERS="alice:…,bob:…"`), run the example app on two
+   devices/simulators (e.g. Android emulator = alice, iOS simulator = bob),
+   and execute live checklist rows L1–L13 and L16 below. Use
+   `adb reverse tcp:8787 tcp:8787` on Android and `http://localhost:8787`
+   on the iOS simulator.
+4. Cross-platform: repeat L3 (text), L6 (media) and L8 (group) between the
+   Android and iOS apps, and L14 against an official Nexconn client.
+5. Push (L15) only on physical devices with FCM/APNs configured.
 
 ## 6. Live checklist (needs credentials; simulator/emulator is fine unless noted)
 
