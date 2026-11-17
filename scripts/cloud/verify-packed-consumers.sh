@@ -24,15 +24,33 @@ export async function demo(): Promise<Message> {
 export const refs = [NexconnProvider, useMessages, useChannelList, createMockClient, NexconnError];
 EOF
 
+cat > "$WORK/tsconfig.nexconn.json" <<'EOF'
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "target": "esnext",
+    "skipLibCheck": true,
+    "strict": true
+  },
+  "files": ["consumer-check.tsx"]
+}
+EOF
+
+check_types() {
+  cp "$WORK/consumer-check.tsx" "$WORK/tsconfig.nexconn.json" .
+  npx tsc --project tsconfig.nexconn.json
+}
+
 echo "== Community CLI consumer (RN 0.88.1)"
 cd "$WORK"
 npx --yes @react-native-community/cli@20.2.0 init CliConsumer --version 0.88.1 --skip-install --skip-git-init
 cd CliConsumer
 npm install
 npm install "$WORK/react-native-nexconn.tgz"
-cp "$WORK/consumer-check.tsx" ./consumer-check.tsx
-npx tsc --noEmit --jsx react-jsx --moduleResolution bundler --module esnext --target esnext \
-  --skipLibCheck --strict consumer-check.tsx
+check_types
 node -e "require.resolve('react-native-nexconn/package.json'); console.log('resolved', require('react-native-nexconn/package.json').version)"
 if [[ "${BUILD_NATIVE:-}" == "android" ]]; then
   (cd android && ./gradlew --no-daemon assembleDebug)
@@ -53,9 +71,7 @@ j.expo.plugins=[...(j.expo.plugins||[]),['react-native-nexconn',{}]];
 j.expo.android={...(j.expo.android||{}),package:'com.example.nexconnconsumer'};
 j.expo.ios={...(j.expo.ios||{}),bundleIdentifier:'com.example.nexconnconsumer'};
 fs.writeFileSync(p,JSON.stringify(j,null,2));"
-cp "$WORK/consumer-check.tsx" ./consumer-check.tsx
-npx tsc --noEmit --jsx react-jsx --moduleResolution bundler --module esnext --target esnext \
-  --skipLibCheck --strict consumer-check.tsx
+check_types
 npx expo prebuild --clean --no-install
 grep -q "maven.nexconn.ai" android/build.gradle
 if [[ "${BUILD_NATIVE:-}" == "android" ]]; then

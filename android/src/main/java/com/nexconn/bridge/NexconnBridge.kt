@@ -41,7 +41,6 @@ import ai.nexconn.chat.handler.OperationHandler
 import ai.nexconn.chat.handler.RefreshReferenceMessageHandler
 import ai.nexconn.chat.handler.SendMediaMessageHandler
 import ai.nexconn.chat.handler.SendMessageHandler
-import ai.nexconn.chat.internal.query.PageableQuery
 import ai.nexconn.chat.message.CombineMessage
 import ai.nexconn.chat.message.FileMessage
 import ai.nexconn.chat.message.GIFMessage
@@ -216,7 +215,12 @@ internal object NexconnBridge {
   private val connecting = AtomicBoolean(false)
   private val forwarder = NexconnEventForwarder { type, payload -> emit(type, payload, null) }
 
-  private class QueryEntry(val kind: String, val query: Any, val generation: Int)
+  private class Query(
+    val loadNextPage: ((Any?, NCError?) -> Unit) -> Unit,
+    val hasMore: () -> Boolean?,
+  )
+
+  private class QueryEntry(val query: Query, val generation: Int)
 
   private val queries = ConcurrentHashMap<String, QueryEntry>()
   private val queryCounter = AtomicLong(0)
@@ -368,16 +372,20 @@ internal object NexconnBridge {
     }
   }
 
-  private fun channelOf(o: JSONObject): BaseChannel {
-    val type = channelType(o.reqInt("channelType"))
-    val id = o.reqStr("channelId")
-    val sub = o.str("subChannelId")
-    return when (type) {
+  private fun channelOf(o: JSONObject): BaseChannel = channelOf(identifierOf(o))
+
+  private fun channelOf(identifier: ChannelIdentifier): BaseChannel {
+    val id = identifier.channelId
+    return when (identifier.channelType) {
       ChannelType.DIRECT -> DirectChannel(id)
       ChannelType.GROUP -> GroupChannel(id)
       ChannelType.OPEN -> OpenChannel(id)
       ChannelType.SYSTEM -> SystemChannel(id)
-      ChannelType.COMMUNITY -> if (!sub.isNullOrEmpty()) CommunitySubChannel(id, sub) else CommunityChannel(id)
+      ChannelType.COMMUNITY -> if (identifier is CommunitySubChannelIdentifier) {
+        CommunitySubChannel(id, identifier.subChannelId)
+      } else {
+        CommunityChannel(id)
+      }
     }
   }
 
@@ -523,7 +531,7 @@ internal object NexconnBridge {
           o.strings("nameList") ?: emptyList(),
           o.strings("summaryList") ?: emptyList(),
           channelType(o.reqInt("channelType")),
-        )
+        ) ?: throw invalidArg("Nexconn could not create combined content")
       }
       "custom" -> {
         val messageType = o.reqStr("messageType")
@@ -898,7 +906,7 @@ internal object NexconnBridge {
     }
     on("message.cancelSendMedia") { a, c ->
       withMessage(a.reqObj("message"), c) { m ->
-        BaseChannel(m.channelIdentifier).cancelSendMediaMessage(m, errorHandler(c))
+        channelOf(m.channelIdentifier).cancelSendMediaMessage(m, errorHandler(c))
       }
     }
     on("message.insert") { a, c ->
@@ -927,7 +935,7 @@ internal object NexconnBridge {
     }
     on("message.deleteForAll") { a, c ->
       val channel = channelOf(a.reqObj("channel"))
-      withMessage(a.reqObj("message"), c) { m -> channel.deleteMessageForAll(m, result<Message>(c)) }
+      withMessage(a.reqObj("message"), c) { m -> channel.deleteMessageForAll(m, result<Message?>(c)) }
     }
     on("message.deleteForMeByTimestamp") { a, c ->
       channelOf(a.reqObj("channel")).deleteMessagesForMeByTimestamp(
@@ -1168,7 +1176,7 @@ internal object NexconnBridge {
     on("open.exit") { a, c ->
       val channel = OpenChannel(a.reqStr("channelId"))
       val extra = a.str("extra")
-      if (extra != null) channel.exitChannel(extra, errorHandler(c)) else channel.exitChannel(errorHandler(c))
+      if (extra != null) channel.exitChannel(extra, errorHandler(c)) else channel.exitChannel(handler = errorHandler(c))
     }
     on("open.getMetadata") { a, c ->
       OpenChannel(a.reqStr("channelId")).getMetadata(a.reqStr("key"), result<Map<String, String>>(c))
@@ -1390,28 +1398,40 @@ internal object NexconnBridge {
   // query.*
   // -------------------------------------------------------------------------
 
-  private fun createQuery(kind: String, p: JSONObject): Any = when (kind) {
+  private fun <T> pageable(
+    loadNextPage: (OperationHandler<T>) -> Unit,
+    hasMore: () -> Boolean? = { null },
+  ): Query = Query(
+    loadNextPage = { callback ->
+      loadNextPage(object : OperationHandler<T> {
+        override fun onResult(result: T?, error: NCError?) = callback(result, error)
+      })
+    },
+    hasMore = hasMore,
+  )
+
+  private fun createQuery(kind: String, p: JSONObject): Query = when (kind) {
     "channels" -> BaseChannel.createChannelsQuery(
       ChannelsQueryParams(channelTypes(p)).apply {
         p.int("pageSize")?.let { pageSize = it }
         p.long("startTime")?.let { startTime = it }
         p.bool("topPriority")?.let { topPriority = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) }
     "unreadMentionMeChannels" -> BaseChannel.createUnreadMentionMeChannelsQuery(
       UnreadMentionMeChannelsQueryParams(channelTypes(p)).apply {
         p.int("pageSize")?.let { pageSize = it }
         p.long("startTime")?.let { startTime = it }
         p.bool("topPriority")?.let { topPriority = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) }
     "messages" -> BaseChannel.createMessagesQuery(
       MessagesQueryParams(identifierOf(p.reqObj("channel"))).apply {
         p.long("startTime")?.let { startTime = it }
         p.bool("isAscending")?.let { isAscending = it }
         p.int("pageSize")?.let { pageSize = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "localMessagesByTime" -> BaseChannel.createLocalMessagesByTimeQuery(
       LocalMessagesByTimeQueryParams(identifierOf(p.reqObj("channel"))).apply {
         p.long("sentTime")?.let { sentTime = it }
@@ -1419,7 +1439,7 @@ internal object NexconnBridge {
         p.strings("messageTypes")?.let { messageTypes = it }
         p.int("pageSize")?.let { pageSize = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) }
     "searchMessagesByUser" -> BaseChannel.createSearchMessagesByUserQuery(
       SearchMessagesByUserQueryParams(
         p.reqStr("channelId"),
@@ -1429,7 +1449,7 @@ internal object NexconnBridge {
         p.int("pageSize") ?: 20,
         p.strings("subChannelIds"),
       ),
-    )
+    ).let { pageable(it::loadNextPage) }
     "searchMessagesByTimeRange" -> BaseChannel.createSearchMessagesByTimeRangeQuery(
       SearchMessagesByTimeRangeQueryParams(
         identifierOf(p.reqObj("channel")),
@@ -1438,7 +1458,7 @@ internal object NexconnBridge {
         p.long("endTime") ?: System.currentTimeMillis(),
         p.int("pageSize") ?: 20,
       ),
-    )
+    ).let { pageable(it::loadNextPage) }
     "searchMessages" -> BaseChannel.createSearchMessagesQuery(
       SearchMessagesQueryParams(
         p.reqStr("keyword"),
@@ -1452,14 +1472,14 @@ internal object NexconnBridge {
         p.int("pageSize") ?: 20,
         p.bool("isAscending") ?: false,
       ),
-    )
+    ).let { pageable(it::loadNextPage) }
     "messagesReadReceiptUsers" -> BaseChannel.createMessagesReadReceiptUsersQuery(
       MessagesReadReceiptUsersQueryParams(identifierOf(p.reqObj("channel")), p.reqStr("messageId")).apply {
         p.int("pageSize")?.let { pageSize = it }
         p.int("status")?.let { status = NexconnSerializer.enumFrom(MessageReadReceiptStatus::class.java, it, "status") }
         p.bool("isAscending")?.let { isAscending = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "openChannelMessages" -> OpenChannel.createOpenChannelMessagesQuery(
       OpenChannelMessagesQueryParams(
         p.reqStr("channelId"),
@@ -1467,7 +1487,7 @@ internal object NexconnBridge {
         p.int("pageSize") ?: 20,
         p.long("startTime") ?: 0L,
       ),
-    )
+    ).let { pageable(it::loadNextPage) }
     "groupApplications" -> GroupChannel.createGroupApplicationsQuery(
       GroupApplicationsQueryParams().apply {
         p.int("pageSize")?.let { pageSize = it }
@@ -1479,26 +1499,26 @@ internal object NexconnBridge {
           status = list.map { NexconnSerializer.enumFrom(GroupApplicationStatus::class.java, it, "status") }
         }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "joinedGroupsByRole" -> GroupChannel.createJoinedGroupsByRoleQuery(
       JoinedGroupsByRoleQueryParams().apply {
         p.int("role")?.let { role = NexconnSerializer.enumFrom(GroupMemberRole::class.java, it, "role") }
         p.int("pageSize")?.let { pageSize = it }
         p.bool("isAscending")?.let { isAscending = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "searchJoinedGroups" -> GroupChannel.createSearchJoinedGroupsQuery(
       SearchJoinedGroupsQueryParams(p.reqStr("groupName")).apply {
         p.int("pageSize")?.let { pageSize = it }
         p.bool("isAscending")?.let { isAscending = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "searchGroupMembers" -> GroupChannel.createSearchGroupMembersQuery(
       SearchGroupMembersQueryParams(p.reqStr("groupId"), p.reqStr("memberName")).apply {
         p.int("pageSize")?.let { pageSize = it }
         p.bool("isAscending")?.let { isAscending = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "groupMembersByRole" -> GroupChannel.createGroupMembersByRoleQuery(
       GroupMembersByRoleQueryParams(p.reqStr("groupId")).apply {
         p.int("role")?.let { role = NexconnSerializer.enumFrom(GroupMemberRole::class.java, it, "role") }
@@ -1508,7 +1528,7 @@ internal object NexconnBridge {
           filterRobotType = NexconnSerializer.enumFrom(GroupMemberFilterRobotType::class.java, it, "filterRobotType")
         }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "friendApplications" -> NCEngine.userModule.createFriendApplicationsQuery(
       FriendApplicationsQueryParams().apply {
         p.int("pageSize")?.let { pageSize = it }
@@ -1520,33 +1540,27 @@ internal object NexconnBridge {
           applicationStatuses = list.map { NexconnSerializer.enumFrom(FriendApplicationStatus::class.java, it, "applicationStatus") }
         }
       },
-    )
+    ).let { pageable(it::loadNextPage) { it.hasMore } }
     "subscribe" -> NCEngine.userModule.createSubscribeQuery(
       SubscribeQueryParams(
         NexconnSerializer.enumFrom(SubscribeType::class.java, p.reqInt("subscribeType"), "subscribeType"),
         p.int("pageSize") ?: 20,
       ),
-    )
+    ).let { pageable(it::loadNextPage) }
     "taggedChannels" -> Tag.createTaggedChannelsQuery(
       TaggedChannelsQueryParams(p.reqStr("tagId")).apply {
         p.int("pageSize")?.let { pageSize = it }
         p.long("startTime")?.let { startTime = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) }
     "untaggedChannels" -> Tag.createUntaggedChannelsQuery(
       UntaggedChannelsQueryParams().apply {
         p.int("pageSize")?.let { pageSize = it }
         p.bool("topPriority")?.let { topPriority = it }
         p.long("startTime")?.let { startTime = it }
       },
-    )
+    ).let { pageable(it::loadNextPage) }
     else -> throw invalidArg("Unknown query kind $kind")
-  }
-
-  private fun hasMore(query: Any): Boolean? = try {
-    query.javaClass.getMethod("getHasMore").invoke(query) as? Boolean
-  } catch (_: NoSuchMethodException) {
-    null
   }
 
   private fun registerQueries() {
@@ -1557,7 +1571,7 @@ internal object NexconnBridge {
       val kind = a.reqStr("kind")
       val query = createQuery(kind, a.obj("params") ?: JSONObject())
       val id = "q${queryCounter.incrementAndGet()}"
-      queries[id] = QueryEntry(kind, query, generation.get())
+      queries[id] = QueryEntry(query, generation.get())
       c.resolve(mapOf("queryId" to id))
     }
     on("query.loadNextPage") { a, c ->
@@ -1567,28 +1581,22 @@ internal object NexconnBridge {
         queries.remove(id)
         throw BridgeException("stale_session", "Query belongs to a previous session")
       }
-      @Suppress("UNCHECKED_CAST")
-      val pageable = entry.query as? PageableQuery<Any?> ?: throw BridgeException("internal", "Not a pageable query")
-      pageable.loadNextPage(
-        object : OperationHandler<Any?> {
-          override fun onResult(result: Any?, error: NCError?) {
-            if (failed(error)) return c.native(error)
-            val out = HashMap<String, Any?>()
-            when (result) {
-              is PageData<*> -> out["items"] = result.data
-              is PageResult<*> -> {
-                out["items"] = result.data
-                out["totalCount"] = result.totalCount
-              }
-              is List<*> -> out["items"] = result
-              null -> out["items"] = emptyList<Any>()
-              else -> out["items"] = listOf(result)
-            }
-            hasMore(entry.query)?.let { out["hasMore"] = it }
-            c.resolve(out)
+      entry.query.loadNextPage { result, error ->
+        if (failed(error)) return@loadNextPage c.native(error)
+        val out = HashMap<String, Any?>()
+        when (result) {
+          is PageData<*> -> out["items"] = result.data
+          is PageResult<*> -> {
+            out["items"] = result.data
+            out["totalCount"] = result.totalCount
           }
-        },
-      )
+          is List<*> -> out["items"] = result
+          null -> out["items"] = emptyList<Any>()
+          else -> out["items"] = listOf(result)
+        }
+        entry.query.hasMore()?.let { out["hasMore"] = it }
+        c.resolve(out)
+      }
     }
     on("query.release") { a, c ->
       queries.remove(a.reqStr("queryId"))
