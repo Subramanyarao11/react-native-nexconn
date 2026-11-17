@@ -109,6 +109,50 @@ requests get 401, that each signed-in user receives a real Nexconn token bound
 to their own id, and that logout invalidates the session. Prints only token
 lengths. Skipped automatically when the variables are missing.
 
+## 5c. Expo release builds
+
+Debug builds alone do not prove release behavior (R8 keep rules on Android,
+Release Swift optimization on iOS).
+
+```sh
+# Android (Ubuntu)
+(cd example && npx expo prebuild --platform android --clean --no-install)
+(cd example/android && ./gradlew --no-daemon --console=plain \
+   -PreactNativeArchitectures=arm64-v8a,x86_64 assembleRelease)
+ls -la example/android/app/build/outputs/apk/release/
+
+# iOS (macOS)
+(cd example && npx expo prebuild --platform ios --clean)
+WS="$(ls -d example/ios/*.xcworkspace | head -1)"
+xcodebuild -workspace "$WS" -scheme "$(basename "$WS" .xcworkspace)" -configuration Release \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build | tail -40
+```
+
+Then install the release build on an emulator/simulator and run L1, L3 and
+L16 from the live checklist against it.
+
+## Next cloud session (planned)
+
+Status at handover (18 November 2026): JS, Android CLI/Expo debug + CLI
+release, packed consumers on Android and the live token test have passed on
+Ubuntu (see STATUS.md). iOS (`verify-ios.sh`) is running on the macOS VM.
+
+Run, in this order, and record each result in STATUS.md:
+
+1. Finish iOS: `bash scripts/cloud/verify-ios.sh all`, then
+   `BUILD_NATIVE=ios bash scripts/cloud/verify-packed-consumers.sh`.
+   Report Swift compile errors with the full `xcodebuild` error lines.
+2. Expo release builds: section 5c (Android and iOS).
+3. Two-user live check: start the token server with two demo users (5b env
+   vars plus `DEMO_USERS="alice:…,bob:…"`), run the example app on two
+   devices/simulators (e.g. Android emulator = alice, iOS simulator = bob),
+   and execute live checklist rows L1–L13 and L16 below. Use
+   `adb reverse tcp:8787 tcp:8787` on Android and `http://localhost:8787`
+   on the iOS simulator.
+4. Cross-platform: repeat L3 (text), L6 (media) and L8 (group) between the
+   Android and iOS apps, and L14 against an official Nexconn client.
+5. Push (L15) only on physical devices with FCM/APNs configured.
+
 ## 6. Live checklist (needs credentials; simulator/emulator is fine unless noted)
 
 Start the token server first (`examples/token-server/README.md`), then sign in

@@ -98,8 +98,13 @@ These are build and typecheck results, not a dependency security audit.
 
 ## Pending verification (cloud VMs / devices)
 
-- First native compile of the Swift bridge and `Nexconn-Swift.h` import (CLI + Expo).
-- Expo release build and iOS prebuild with the plugin.
+Plan (18–19 November 2026): the iOS run (`verify-ios.sh`) is in progress on
+the macOS VM; the two-user live checklist and the Expo release builds are
+scheduled for the next cloud session — see "Next cloud session" in
+[the cloud runbook](CLOUD_TEST_RUNBOOK.md).
+
+- First native compile of the Swift bridge and `Nexconn-Swift.h` import (CLI + Expo) — running.
+- Expo release builds (Android `assembleRelease`, iOS Release) and iOS prebuild with the plugin.
 - All live scenarios L1–L16 in docs/CLOUD_TEST_RUNBOOK.md, including
   cross-platform and official-client interop, offline sync, account switch,
   JS reload, custom messages and physical-device push.
