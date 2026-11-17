@@ -10,8 +10,9 @@ pinned Nexconn native SDKs** (Android `ai.nexconn.chat:chat:26.4.2`, iOS
 SDK event types, with 8 documented platform-only gaps (docs/PARITY.md).
 
 The Android bridge has compiled against the pinned SDK in both workspace
-fixtures. The SDK has not been run on a simulator/device or exercised against
-the Nexconn service, and the Swift bridge has not been compiled. See
+fixtures. The example token server passed its live Nexconn API test, but the
+mobile SDK has not been run on a simulator/device or connected to Nexconn.
+The Swift bridge has not been compiled. See
 [the cloud runbook](CLOUD_TEST_RUNBOOK.md) for the verification steps.
 
 ## Route decision
@@ -84,7 +85,7 @@ CMake 3.22.1.
 | `bash scripts/cloud/verify-android.sh cli` | Pass: debug APK (`arm64-v8a`, `x86_64`), release APK (`arm64-v8a`), and `:app:minifyReleaseWithR8`. Both variants compiled the Kotlin bridge. |
 | `bash scripts/cloud/verify-android.sh expo` | Pass: clean Android prebuild, unchanged project/app Gradle files and manifest after non-clean prebuild, and debug APK (`arm64-v8a`, `x86_64`). The generated project contains the Nexconn Maven repository and both notification-tap intent filters. |
 | `BUILD_NATIVE=android bash scripts/cloud/verify-packed-consumers.sh` | Pass: fresh CLI (RN 0.88.1) and Expo (SDK 58.0.26, RN 0.88.1) apps outside the workspace installed the `0.0.0-development` tarball. TypeScript 6.0.3 checked all three entry points. Expo prebuild passed; both debug APKs compiled the bridge and packaged the Nexconn native library for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`. |
-| `node .yarn/releases/yarn-4.18.1.cjs test:live` | Skipped: `NEXCONN_APP_KEY` was not set in the VM environment. |
+| `node .yarn/releases/yarn-4.18.1.cjs test:live` | Pass: 1 test, 0 skipped. The example server issued distinct Nexconn tokens bound to two signed-in users via `/v4/auth/access-token/issue`. Unauthenticated requests, wrong passwords, and sessions invalidated by logout received HTTP 401. |
 | CLI debug APK alignment | All 22 packaged libraries (including `libNexConnIMLib.so` on both ABIs) had `0x4000` alignment on every ELF LOAD segment. `zipalign -P 16 -c -v 4` passed. |
 
 Maven Central initially returned HTTP 429; Gradle used Google's Maven Central
@@ -102,7 +103,6 @@ These are build and typecheck results, not a dependency security audit.
 - All live scenarios L1–L16 in docs/CLOUD_TEST_RUNBOOK.md, including
   cross-platform and official-client interop, offline sync, account switch,
   JS reload, custom messages and physical-device push.
-- Token server against the real Server API (`/v4/auth/access-token/issue`).
 - Android launch on a 16 KB page-size device or emulator.
 
 ## Known limits and assumptions
