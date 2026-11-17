@@ -24,10 +24,18 @@ fi
 
 if [[ "$TARGET" == "expo" || "$TARGET" == "all" ]]; then
   echo "== Expo fixture: prebuild (config plugin) + assembleDebug"
-  (cd example && npx expo prebuild --platform android --clean --no-install)
-  # Second prebuild must be a no-op for plugin edits (idempotency).
-  (cd example && npx expo prebuild --platform android --no-install)
-  grep -q "maven.nexconn.ai" example/android/build.gradle
+  (
+    cd example
+    npx expo prebuild --platform android --clean --no-install
+    BEFORE="$(mktemp -d)"
+    trap 'rm -rf "$BEFORE"' EXIT
+    files=(android/build.gradle android/app/build.gradle android/app/src/main/AndroidManifest.xml)
+    for i in "${!files[@]}"; do cp "${files[i]}" "$BEFORE/$i"; done
+    npx expo prebuild --platform android --no-clean --no-install
+    for i in "${!files[@]}"; do diff -u "$BEFORE/$i" "${files[i]}"; done
+    grep -q "maven.nexconn.ai" android/build.gradle
+    echo "Expo Android plugin output unchanged after non-clean prebuild."
+  )
   (cd example/android && ./gradlew --no-daemon --console=plain \
      -PreactNativeArchitectures=x86_64,arm64-v8a assembleDebug)
   ls -la example/android/app/build/outputs/apk/debug/
@@ -36,13 +44,15 @@ fi
 echo "== 16 KB page-size check of packaged native libraries (informational)"
 APK="$(ls example-cli/android/app/build/outputs/apk/debug/*.apk 2>/dev/null | head -1 || true)"
 if [[ -n "$APK" ]] && command -v unzip >/dev/null; then
-  TMP="$(mktemp -d)"; unzip -q -o "$APK" 'lib/*' -d "$TMP" || true
+  TMP="$(mktemp -d)"
+  trap 'rm -rf "$TMP"' EXIT
+  unzip -q "$APK" 'lib/*' -d "$TMP"
   if command -v llvm-readelf >/dev/null || [[ -x "$ANDROID_HOME/ndk/27.1.12297006/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" ]]; then
     READELF="$(command -v llvm-readelf || echo "$ANDROID_HOME/ndk/27.1.12297006/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf")"
-    for so in $(find "$TMP/lib" -name '*.so'); do
-      align="$("$READELF" -l "$so" | awk '/LOAD/ {print $NF; exit}')"
-      echo "$(basename "$so"): LOAD align $align"
-    done
+    while IFS= read -r -d '' so; do
+      align="$("$READELF" -Wl "$so" | awk '/^[[:space:]]*LOAD[[:space:]]/ {print $NF}' | paste -sd, -)"
+      echo "${so#"$TMP"/}: LOAD align $align"
+    done < <(find "$TMP/lib" -name '*.so' -print0)
   else
     echo "llvm-readelf not found; skipped"
   fi

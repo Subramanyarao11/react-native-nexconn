@@ -1,8 +1,8 @@
 # Cloud test runbook
 
-Everything below still needs running on the cloud VMs (Ubuntu for JS and
-Android, macOS for iOS). Record results in docs/STATUS.md. A green build is
-not evidence that messaging works; the live checklist at the end is.
+Run these checks on cloud VMs (Ubuntu for JS and Android, macOS for iOS).
+See [implementation status](STATUS.md) for verified results. A green build
+is not evidence that messaging works; the live checklist at the end is.
 
 ## 0. Prerequisites
 
@@ -11,9 +11,18 @@ not evidence that messaging works; the live checklist at the end is.
 | Node | 24.x (`.nvmrc`) | 24.x |
 | Yarn | committed `.yarn/releases/yarn-4.18.1.cjs` (no global yarn needed) | same |
 | Java | JDK 17 | JDK 17 (only for Android on Mac) |
-| Android | SDK platform 36 + 37, build-tools 37.0.0, NDK 27.1.12297006, `ANDROID_HOME` set | optional |
+| Android | SDK platforms `android-36` + `android-37.0`, build-tools 37.0.0, NDK 27.1.12297006, `ANDROID_HOME` set | optional |
 | iOS | — | Xcode 26.x, iOS 26 simulator runtime, CocoaPods ≥ 1.16 |
-| Network | registry.npmjs.org, maven.google.com, repo.maven.apache.org, **maven.nexconn.ai**, cdn.cocoapods.org, **downloads.nexconn.ai** | same |
+| Network | registry.npmjs.org, dl.google.com, maven.google.com, repo.maven.apache.org, plugins.gradle.org, services.gradle.org, **maven.nexconn.ai**, cdn.cocoapods.org, **downloads.nexconn.ai** | same |
+
+With Android SDK Command-line Tools on `PATH` and `ANDROID_HOME` pointing to
+the SDK directory, review and accept the SDK licenses, then install the packages:
+
+```sh
+sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-36" "platforms;android-37.0" \
+  "build-tools;37.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+```
 
 For live tests you also need: a Nexconn test App Key (+ data center), its App
 Secret on the token server only, two test user ids, and (for push) FCM/APNs
@@ -30,21 +39,17 @@ Bob build, Codegen schema + spec generation for both platforms, `yarn pack`
 (fails if vendor binaries are packed). Already passing on the dev Mac except
 the Codegen-generation and pack steps, which were run separately and passed.
 
-## 2. Android native builds (Ubuntu) — first compile of the Kotlin bridge
+## 2. Android native builds (Ubuntu)
 
 ```sh
 bash scripts/cloud/verify-android.sh cli    # Community CLI fixture debug + release (R8)
 bash scripts/cloud/verify-android.sh expo   # Expo prebuild (x2, idempotency) + debug build
 ```
 
-Expected first-compile risks (none could be compiled locally):
-
-- Kotlin property names on SDK classes (taken from bytecode field names) and
-  nullability of SDK parameters (taken from `@Nullable/@NotNull` annotations).
-- `NexconnCustomSlot.decodeFields(fields: Map<String, Any?>)` override
-  signature (taken from the official custom-message docs).
-- Release build: R8 with `android/consumer-rules.pro` (keeps SDK getters for
-  the reflection serializer).
+When upgrading the Nexconn SDK, check Kotlin property names, nullability,
+and the `NexconnCustomSlot.decodeFields` override against the pinned AAR.
+The CLI release build runs R8 with `android/consumer-rules.pro` to keep
+SDK getters used by the reflection serializer.
 
 Run on an emulator after the build:
 
