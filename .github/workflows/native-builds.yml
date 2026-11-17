@@ -1,0 +1,64 @@
+name: Native builds
+# Manual only: versions, runner costs and first builds still need verification.
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "android, ios or both"
+        required: true
+        default: both
+permissions:
+  contents: read
+jobs:
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .nvmrc
+      - run: bash scripts/cloud/verify-js.sh
+
+  android:
+    if: inputs.platforms != 'ios'
+    needs: js
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: bash scripts/cloud/verify-android.sh all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apks
+          path: |
+            example-cli/android/app/build/outputs/apk/debug/*.apk
+            example/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+
+  ios:
+    if: inputs.platforms != 'android'
+    needs: js
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .nvmrc
+      - run: bash scripts/cloud/verify-ios.sh all
+      - name: Archive simulator apps
+        run: |
+          mkdir -p artifacts
+          find example-cli/ios/build example/ios/build -name '*.app' -path '*iphonesimulator*' -type d | while read -r app; do
+            tar -czf "artifacts/$(basename "$app").tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-apps
+          path: artifacts/*.tar.gz
+          retention-days: 7

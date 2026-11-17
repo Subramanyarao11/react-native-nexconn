@@ -1,0 +1,370 @@
+/**
+ * React bindings for react-native-nexconn. React is a peer dependency.
+ * Every hook resets its state when the connected user/session changes, so
+ * data from a previous account is never shown to the next one.
+ */
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
+import type { ClientSnapshot, NexconnClient } from '../core/client.ts';
+import { ConnectionStatus, type ChannelType } from '../core/enums.ts';
+import type {
+  Channel,
+  ChannelIdentifier,
+  ChannelsQueryParams,
+  Message,
+  NexconnEventMap,
+  NexconnEventName,
+  OutgoingContent,
+  SendOptions,
+  TypingStatus,
+} from '../core/types.ts';
+import type { PagedQuery } from '../core/query.ts';
+import { isMediaContent } from '../core/encode.ts';
+import { ChannelListStore, MessageListStore, sameChannel } from './stores.ts';
+
+export {
+  ChannelListStore,
+  MessageListStore,
+  sameChannel,
+  channelKey,
+} from './stores.ts';
+
+const ClientContext = createContext<NexconnClient | null>(null);
+
+export interface NexconnProviderProps {
+  client: NexconnClient;
+  children?: ReactNode;
+}
+
+/** Makes a client available to the hooks below. */
+export function NexconnProvider({ client, children }: NexconnProviderProps) {
+  return createElement(ClientContext.Provider, { value: client }, children);
+}
+
+export function useNexconnClient(): NexconnClient {
+  const client = useContext(ClientContext);
+  if (!client) {
+    throw new Error('useNexconnClient must be used inside <NexconnProvider>');
+  }
+  return client;
+}
+
+/** Connection state (status, user, generation) with automatic re-render. */
+export function useConnection(): ClientSnapshot {
+  const client = useNexconnClient();
+  return useSyncExternalStore(
+    client.subscribe,
+    client.getSnapshot,
+    client.getSnapshot
+  );
+}
+
+/** Subscribes to an SDK event for the lifetime of the component. */
+export function useNexconnEvent<K extends NexconnEventName>(
+  event: K,
+  handler: (payload: NexconnEventMap[K]) => void
+): void {
+  const client = useNexconnClient();
+  const ref = useRef(handler);
+  ref.current = handler;
+  useEffect(
+    () => client.on(event, (payload) => ref.current(payload)),
+    [client, event]
+  );
+}
+
+function sessionKey(snapshot: ClientSnapshot): string {
+  return `${snapshot.generation}:${snapshot.userId ?? ''}`;
+}
+
+interface AsyncState {
+  loading: boolean;
+  error: unknown;
+}
+
+export interface UseChannelListResult extends AsyncState {
+  channels: readonly Channel[];
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+/**
+ * Paged channel list that stays current: new messages, pin and no-disturb
+ * syncs refresh the affected channel.
+ */
+export function useChannelList(
+  params: ChannelsQueryParams = { channelTypes: [1, 3] as ChannelType[] }
+): UseChannelListResult {
+  const client = useNexconnClient();
+  const snapshot = useConnection();
+  const key = sessionKey(snapshot);
+  const paramsKey = JSON.stringify(params);
+  const storeRef = useRef(new ChannelListStore());
+  const queryRef = useRef<PagedQuery<Channel> | undefined>(undefined);
+  const [channels, setChannels] = useState<readonly Channel[]>([]);
+  const [state, setState] = useState<AsyncState>({
+    loading: false,
+    error: undefined,
+  });
+  const [hasMore, setHasMore] = useState(true);
+  const connected = snapshot.connectionStatus === ConnectionStatus.connected;
+
+  const loadMore = useCallback(async () => {
+    const query = queryRef.current;
+    if (!query || !query.hasMore) return;
+    setState({ loading: true, error: undefined });
+    try {
+      const page = await query.loadNextPage();
+      if (queryRef.current !== query) return; // Reset meanwhile.
+      if (storeRef.current.upsert(page.items))
+        setChannels(storeRef.current.channels);
+      setHasMore(query.hasMore);
+      setState({ loading: false, error: undefined });
+    } catch (error) {
+      if (queryRef.current === query) setState({ loading: false, error });
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    void queryRef.current?.release();
+    storeRef.current.reset();
+    setChannels([]);
+    setHasMore(true);
+    queryRef.current = client.channels.createChannelsQuery(
+      JSON.parse(paramsKey)
+    );
+    await loadMore();
+  }, [client, paramsKey, loadMore]);
+
+  useEffect(() => {
+    storeRef.current.reset();
+    setChannels([]);
+    if (!connected) return undefined;
+    void refresh();
+    return () => {
+      void queryRef.current?.release();
+      queryRef.current = undefined;
+    };
+  }, [key, connected, refresh]);
+
+  useEffect(() => {
+    const reloadChannel = (channel: ChannelIdentifier) => {
+      const types = (JSON.parse(paramsKey) as ChannelsQueryParams).channelTypes;
+      if (!types.includes(channel.channelType)) return;
+      client.channels
+        .getChannel(channel)
+        .then((updated) => {
+          if (updated && storeRef.current.upsert([updated])) {
+            setChannels(storeRef.current.channels);
+          }
+        })
+        .catch(() => undefined);
+    };
+    const subs = [
+      client.on('messageReceived', ({ message }) =>
+        reloadChannel(message.channel)
+      ),
+      client.on('channelPinnedSync', ({ channel }) => reloadChannel(channel)),
+      client.on('channelNoDisturbLevelSync', ({ channel }) =>
+        reloadChannel(channel)
+      ),
+      client.on('channelUnreadStatusSync', ({ channel }) =>
+        reloadChannel(channel)
+      ),
+      client.on('remoteChannelsSyncCompleted', () => void refresh()),
+    ];
+    return () => subs.forEach((unsubscribe) => unsubscribe());
+  }, [client, paramsKey, refresh]);
+
+  return { channels, hasMore, loadMore, refresh, ...state };
+}
+
+export interface UseMessagesResult extends AsyncState {
+  messages: readonly Message[];
+  hasMore: boolean;
+  /** Loads older history. */
+  loadOlder: () => Promise<void>;
+  /** Sends content, picking `send` or `sendMedia` automatically. */
+  send: (content: OutgoingContent, options?: SendOptions) => Promise<Message>;
+}
+
+/**
+ * Messages of one channel: history (newest first from the SDK, kept sorted
+ * ascending here), live incoming messages, edits, recalls and deletions.
+ */
+export function useMessages(
+  channel: ChannelIdentifier,
+  options: { pageSize?: number } = {}
+): UseMessagesResult {
+  const client = useNexconnClient();
+  const snapshot = useConnection();
+  const key = sessionKey(snapshot);
+  const channelId = `${channel.channelType}:${channel.channelId}:${channel.subChannelId ?? ''}`;
+  const channelRef = useRef(channel);
+  channelRef.current = channel;
+  const storeRef = useRef(new MessageListStore(channel));
+  const queryRef = useRef<PagedQuery<Message> | undefined>(undefined);
+  const [messages, setMessages] = useState<readonly Message[]>([]);
+  const [state, setState] = useState<AsyncState>({
+    loading: false,
+    error: undefined,
+  });
+  const [hasMore, setHasMore] = useState(true);
+  const connected = snapshot.connectionStatus === ConnectionStatus.connected;
+  const pageSize = options.pageSize ?? 30;
+
+  const publish = () => setMessages(storeRef.current.messages);
+
+  const loadOlder = useCallback(async () => {
+    const query = queryRef.current;
+    if (!query || !query.hasMore) return;
+    setState({ loading: true, error: undefined });
+    try {
+      const page = await query.loadNextPage();
+      if (queryRef.current !== query) return;
+      if (storeRef.current.upsert(page.items)) publish();
+      setHasMore(query.hasMore);
+      setState({ loading: false, error: undefined });
+    } catch (error) {
+      if (queryRef.current === query) setState({ loading: false, error });
+    }
+  }, []);
+
+  useEffect(() => {
+    storeRef.current = new MessageListStore(channelRef.current);
+    setMessages([]);
+    setHasMore(true);
+    if (!connected) return undefined;
+    const query = client.messages.createMessagesQuery({
+      channel: channelRef.current,
+      pageSize,
+      isAscending: false,
+    });
+    queryRef.current = query;
+    void loadOlder();
+    return () => {
+      queryRef.current = undefined;
+      void query.release();
+    };
+  }, [client, key, channelId, connected, pageSize, loadOlder]);
+
+  useEffect(() => {
+    const upsert = (list: readonly Message[]) => {
+      if (storeRef.current.upsert(list)) publish();
+    };
+    const subs = [
+      client.on('messageReceived', ({ message }) => upsert([message])),
+      client.on('messagesUpdated', ({ messages: list }) => upsert(list)),
+      client.on(
+        'messageMetadataUpdated',
+        ({ message }) => message && upsert([message])
+      ),
+      client.on(
+        'messageMetadataDeleted',
+        ({ message }) => message && upsert([message])
+      ),
+      client.on('messagesDeleted', ({ messages: list }) => {
+        if (storeRef.current.remove(list)) publish();
+      }),
+      client.on('expiredMessagesDeleted', ({ messages: list }) => {
+        if (storeRef.current.remove(list)) publish();
+      }),
+    ];
+    return () => subs.forEach((unsubscribe) => unsubscribe());
+  }, [client, channelId]);
+
+  const send = useCallback(
+    async (content: OutgoingContent, sendOptions?: SendOptions) => {
+      const target = channelRef.current;
+      const generation = client.getSnapshot().generation;
+      const onAttached = (message: Message) => {
+        if (client.getSnapshot().generation === generation) {
+          storeRef.current.upsert([message]);
+          publish();
+        }
+      };
+      const sent =
+        isMediaContent(content) || content.type === 'custom'
+          ? await client.messages.sendMedia(target, content, {
+              ...sendOptions,
+              onAttached,
+            })
+          : await client.messages.send(target, content, {
+              ...sendOptions,
+              onAttached,
+            });
+      if (
+        client.getSnapshot().generation === generation &&
+        sameChannel(sent.channel, target)
+      ) {
+        storeRef.current.upsert([sent]);
+        publish();
+      }
+      return sent;
+    },
+    [client]
+  );
+
+  return { messages, hasMore, loadOlder, send, ...state };
+}
+
+/** Total unread count, refreshed on new messages and unread syncs. */
+export function useTotalUnreadCount(): number {
+  const client = useNexconnClient();
+  const snapshot = useConnection();
+  const [count, setCount] = useState(0);
+  const connected = snapshot.connectionStatus === ConnectionStatus.connected;
+  const key = sessionKey(snapshot);
+
+  useEffect(() => {
+    setCount(0);
+    if (!connected) return undefined;
+    let active = true;
+    const refresh = () => {
+      client.channels
+        .getTotalUnreadCount()
+        .then((value) => active && setCount(value))
+        .catch(() => undefined);
+    };
+    refresh();
+    const subs = [
+      client.on('messageReceived', refresh),
+      client.on('channelUnreadStatusSync', refresh),
+      client.on('offlineMessageSyncCompleted', refresh),
+    ];
+    return () => {
+      active = false;
+      subs.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [client, key, connected]);
+
+  return count;
+}
+
+/** Users currently typing in a channel (as reported by the SDK). */
+export function useTypingUsers(
+  channel: ChannelIdentifier
+): readonly TypingStatus[] {
+  const client = useNexconnClient();
+  const [users, setUsers] = useState<readonly TypingStatus[]>([]);
+  const channelRef = useRef(channel);
+  channelRef.current = channel;
+  const channelId = `${channel.channelType}:${channel.channelId}`;
+  useEffect(() => {
+    setUsers([]);
+    return client.on('typingStatusChanged', (event) => {
+      if (sameChannel(event.channel, channelRef.current)) setUsers(event.users);
+    });
+  }, [client, channelId]);
+  return users;
+}

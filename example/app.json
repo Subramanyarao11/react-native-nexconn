@@ -21,6 +21,20 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "react-native-nexconn",
+        {
+          "android": {
+            "fcm": false,
+            "notificationIntentFilters": true
+          },
+          "ios": {
+            "pushNotifications": false
+          }
+        }
+      ]
+    ]
   }
 }
