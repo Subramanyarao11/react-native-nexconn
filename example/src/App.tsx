@@ -1,33 +1,20 @@
-import { useEffect, useState } from 'react';
-import { Text, View, StyleSheet } from 'react-native';
-import { getIntegrationStatus } from 'react-native-nexconn';
+import { AreaCode } from 'react-native-nexconn';
+import { DemoApp } from '../../examples/shared/DemoApp';
 
+/**
+ * Expo development build (Expo Go cannot load the native Nexconn SDK).
+ * Optional defaults come from EXPO_PUBLIC_* variables (see example/.env.example);
+ * the App Secret must never be configured here.
+ */
 export default function App() {
-  const [status, setStatus] = useState('Checking native module…');
-  useEffect(() => {
-    let active = true;
-    getIntegrationStatus().then(
-      (value) => {
-        if (active) setStatus(JSON.stringify(value, null, 2));
-      },
-      (error: unknown) => {
-        if (active) setStatus(String(error));
-      }
-    );
-    return () => {
-      active = false;
-    };
-  }, []);
-
   return (
-    <View style={styles.container}>
-      <Text>Nexconn · Expo development build</Text>
-      <Text selectable>{status}</Text>
-      <Text>Bootstrap only. Nexconn Chat is not integrated yet.</Text>
-    </View>
+    <DemoApp
+      title="Nexconn · Expo development build"
+      defaults={{
+        appKey: process.env.EXPO_PUBLIC_NEXCONN_APP_KEY,
+        tokenServerUrl: process.env.EXPO_PUBLIC_TOKEN_SERVER_URL,
+        areaCode: AreaCode.sg,
+      }}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, gap: 16 },
-});

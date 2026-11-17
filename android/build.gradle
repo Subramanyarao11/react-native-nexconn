@@ -1,6 +1,9 @@
 ext.Nexconn = [
   minSdkVersion: 24,
-  compileSdkVersion: 36
+  compileSdkVersion: 36,
+  // Official Nexconn Chat SDK (Maven: https://maven.nexconn.ai). Override from
+  // the app with `ext.nexconnSdkVersion = "x.y.z"` in android/build.gradle.
+  nexconnSdkVersion: "26.4.2"
 ]
 
 ext.getExtOrDefault = { prop ->
@@ -11,13 +14,28 @@ ext.getExtOrDefault = { prop ->
   return Nexconn[prop]
 }
 
+// The SDK is published to Nexconn's own Maven repository. Dependency resolution
+// for the app happens in the app project, so the repository is added to every
+// project unless the app opts out (it then declares the repository itself).
+def nexconnMavenUrl = "https://maven.nexconn.ai/repository/maven-releases/"
+def addNexconnRepository = { RepositoryHandler repos ->
+  if (!repos.any { it instanceof MavenArtifactRepository && it.url.toString() == nexconnMavenUrl }) {
+    repos.maven {
+      url nexconnMavenUrl
+      content { includeGroupByRegex "ai\\.nexconn.*" }
+    }
+  }
+}
+addNexconnRepository(repositories)
+if (!(rootProject.ext.has("nexconnSkipRepository") && rootProject.ext.get("nexconnSkipRepository"))) {
+  rootProject.allprojects { p -> addNexconnRepository(p.repositories) }
+}
 
 apply plugin: "com.android.library"
 
 if (project.extensions.findByName("kotlin") == null) {
   apply plugin: "kotlin-android"
 }
-
 
 apply plugin: "com.facebook.react"
 
@@ -28,9 +46,11 @@ android {
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
+    consumerProguardFiles "consumer-rules.pro"
   }
 }
 
 dependencies {
   implementation "com.facebook.react:react-android"
+  api "ai.nexconn.chat:chat:${getExtOrDefault("nexconnSdkVersion")}"
 }

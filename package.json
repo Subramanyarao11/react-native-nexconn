@@ -6,10 +6,21 @@
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
     ".": {
-      "react-native-nexconn-source": "./src/index.tsx",
+      "react-native-nexconn-source": "./src/index.ts",
       "types": "./lib/typescript/src/index.d.ts",
       "default": "./lib/module/index.js"
     },
+    "./react": {
+      "react-native-nexconn-source": "./src/react/index.ts",
+      "types": "./lib/typescript/src/react/index.d.ts",
+      "default": "./lib/module/react/index.js"
+    },
+    "./testing": {
+      "react-native-nexconn-source": "./src/testing/index.ts",
+      "types": "./lib/typescript/src/testing/index.d.ts",
+      "default": "./lib/module/testing/index.js"
+    },
+    "./app.plugin.js": "./app.plugin.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -18,6 +29,10 @@
     "android",
     "ios",
     "cpp",
+    "android/consumer-rules.pro",
+    "THIRD_PARTY_NOTICES.md",
+    "plugin",
+    "app.plugin.js",
     "*.podspec",
     "react-native.config.js",
     "!ios/build",
@@ -39,14 +54,20 @@
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "example:expo": "yarn workspace react-native-nexconn-example",
     "example:cli": "yarn workspace react-native-nexconn-cli-example",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --test tests/*.test.mjs",
+    "test:live": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/live/*.live.test.mjs",
     "build": "bob build",
     "check": "yarn test && yarn typecheck && yarn lint && yarn build"
   },
   "keywords": [
     "react-native",
     "ios",
-    "android"
+    "android",
+    "nexconn",
+    "chat",
+    "messaging",
+    "expo",
+    "turbo-module"
   ],
   "repository": {
     "type": "git",
@@ -81,6 +102,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
+    "expo": ">=58.0.0",
     "react": "^19.3.0",
     "react-native": "0.88.x"
   },
@@ -130,5 +152,10 @@
     ],
     "version": "0.64.0"
   },
-  "private": true
+  "private": true,
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    }
+  }
 }

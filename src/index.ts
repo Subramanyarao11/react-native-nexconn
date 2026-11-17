@@ -1,0 +1,46 @@
+/**
+ * react-native-nexconn — community React Native Chat SDK for Nexconn.
+ *
+ * Headless entry point. React bindings: `react-native-nexconn/react`.
+ * Expo config plugin: `react-native-nexconn/app.plugin.js`.
+ * Test doubles: `react-native-nexconn/testing`.
+ */
+import { NexconnClient } from './core/client.ts';
+import { createNativeTransport } from './nativeTransport.ts';
+
+let sharedClient: NexconnClient | undefined;
+
+/**
+ * Returns the process-wide client bound to the native SDK singleton.
+ * The native SDK cannot host multiple isolated engines, so there is
+ * intentionally no way to create a second native-backed client.
+ */
+export function getNexconnClient(): NexconnClient {
+  if (!sharedClient) sharedClient = new NexconnClient(createNativeTransport());
+  return sharedClient;
+}
+
+export { NexconnClient, NotificationsModule } from './core/client.ts';
+export type {
+  ClientSnapshot,
+  ConnectWithProviderOptions,
+  TokenProvider,
+} from './core/client.ts';
+export { PagedQuery } from './core/query.ts';
+export type { QueryKind } from './core/query.ts';
+export { NexconnError, isNexconnError } from './core/errors.ts';
+export type { NexconnErrorCategory } from './core/errors.ts';
+export * from './core/enums.ts';
+export type * from './core/types.ts';
+export type { Transport, NativeEventEnvelope } from './core/transport.ts';
+export { ChannelsModule } from './core/modules/channels.ts';
+export { MessagesModule } from './core/modules/messages.ts';
+export type { DownloadCallbacks } from './core/modules/messages.ts';
+export { GroupsModule } from './core/modules/groups.ts';
+export { OpenChannelsModule } from './core/modules/openChannels.ts';
+export { CommunityModule } from './core/modules/community.ts';
+export { UsersModule } from './core/modules/users.ts';
+export { TranslationModule } from './core/modules/translation.ts';
+export { TagsModule } from './core/modules/tags.ts';
+export { getIntegrationStatus } from './getIntegrationStatus';
+export type { IntegrationStatus } from './diagnostics.ts';

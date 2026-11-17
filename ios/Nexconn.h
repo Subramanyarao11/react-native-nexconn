@@ -1,5 +1,7 @@
 #import <NexconnSpec/NexconnSpec.h>
+#import <React/RCTInvalidating.h>
 
-@interface Nexconn : NSObject <NativeNexconnSpec>
+/// TurboModule shell. All SDK work happens in the Swift `NexconnBridge`.
+@interface Nexconn : NativeNexconnSpecBase <NativeNexconnSpec, RCTInvalidating>
 
 @end
