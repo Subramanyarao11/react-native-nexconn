@@ -110,6 +110,16 @@ Branch `fix/session-restore-recall-release`; test plan in
 - `verify-packed-consumers.sh` builds before packing; new `expo-release`
   targets in `verify-android.sh` / `verify-ios.sh`.
 - JS checks on the dev Mac: 53/53 tests, typecheck, lint (0 errors), build.
+- Ubuntu run of the branch at `dce119b` found four problems: the Expo R8
+  APK aborted on sign-in and failed sends with `MessageNotRegistered` 34021,
+  live recall did not render, and two verifier checks were wrong. Fixes:
+  - `consumer-rules.pro` keeps the whole SDK, including annotations and JNI.
+  - `message.getById` bypasses the bridge cache on both platforms.
+  - `recall()` falls back to a fresh SDK lookup.
+  - The verifier checks were corrected.
+
+  These fixes are not yet verified natively; see section 0 of
+  [cloud session 2](CLOUD_SESSION_2.md). The dev Mac passes 54/54 JS tests.
 
 ## Pending verification (cloud VMs / devices)
 

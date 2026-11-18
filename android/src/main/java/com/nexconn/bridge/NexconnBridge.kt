@@ -561,11 +561,16 @@ internal object NexconnBridge {
     }
   }
 
-  private fun withMessage(ref: JSONObject, call: Call, block: (Message) -> Unit) {
+  /**
+   * Resolves a JS message reference to an SDK [Message]. Operations use the
+   * cached instance when available; [fresh] lookups (`message.getById`) always
+   * ask the SDK so callers see recalls/edits applied after caching.
+   */
+  private fun withMessage(ref: JSONObject, call: Call, fresh: Boolean = false, block: (Message) -> Unit) {
     val clientId = ref.int("clientId")?.takeIf { it > 0 }
     val messageId = ref.str("messageId")?.takeIf { it.isNotEmpty() }
     if (clientId == null && messageId == null) throw invalidArg("message needs clientId or messageId")
-    cached(clientId, messageId)?.let { return block(it) }
+    if (!fresh) cached(clientId, messageId)?.let { return block(it) }
     BaseChannel.getMessageById(
       GetMessageByIdParams(messageId, clientId),
       object : OperationHandler<Message> {
@@ -974,7 +979,7 @@ internal object NexconnBridge {
         result<List<Message>>(c),
       )
     }
-    on("message.getById") { a, c -> withMessage(a.reqObj("message"), c) { m -> c.resolve(m) } }
+    on("message.getById") { a, c -> withMessage(a.reqObj("message"), c, fresh = true) { m -> c.resolve(m) } }
     on("message.sendReadReceiptResponse") { a, c ->
       channelOf(a.reqObj("channel")).sendReadReceiptResponse(a.reqStrings("messageIds"), errorHandler(c))
     }

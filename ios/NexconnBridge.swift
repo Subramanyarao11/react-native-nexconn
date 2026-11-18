@@ -498,13 +498,16 @@ public final class NexconnBridge: NSObject {
     }
   }
 
-  private func withMessage(_ ref: Args, _ c: Call, _ block: @escaping (Message) throws -> Void) {
+  /// Resolves a JS message reference. Operations use the cached instance when
+  /// available; `fresh` lookups (`message.getById`) always ask the SDK so
+  /// callers see recalls/edits applied after caching.
+  private func withMessage(_ ref: Args, _ c: Call, fresh: Bool = false, _ block: @escaping (Message) throws -> Void) {
     let clientId = ref.int64("clientId").flatMap { $0 > 0 ? $0 : nil }
     let messageId = ref.str("messageId").flatMap { $0.isEmpty ? nil : $0 }
     guard clientId != nil || messageId != nil else {
       return c.reject(BridgeError.invalid("message needs clientId or messageId"))
     }
-    if let cached = cachedMessage(clientId: clientId, messageId: messageId) {
+    if !fresh, let cached = cachedMessage(clientId: clientId, messageId: messageId) {
       return guarded(c) { try block(cached) }
     }
     let params = clientId.map { GetMessageByIdParams(messageClientId: $0) } ?? GetMessageByIdParams(messageId: messageId ?? "")
@@ -916,7 +919,7 @@ public final class NexconnBridge: NSObject {
       params.afterCount = a.int("afterCount") ?? 10
       try self.channel(a.reqDict("channel")).getMessagesAroundTime(params: params, completion: self.result(c) as OperationHandler<[Message]>)
     }
-    on("message.getById") { [unowned self] a, c in self.withMessage(try a.reqDict("message"), c) { m in c.resolve(m) } }
+    on("message.getById") { [unowned self] a, c in self.withMessage(try a.reqDict("message"), c, fresh: true) { m in c.resolve(m) } }
     on("message.sendReadReceiptResponse") { [unowned self] a, c in
       try self.channel(a.reqDict("channel")).sendReadReceiptResponse(messageIds: try a.reqStrings("messageIds"), completion: self.errorHandler(c))
     }

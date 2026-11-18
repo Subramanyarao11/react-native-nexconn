@@ -33,6 +33,7 @@ import {
   ChannelListStore,
   MessageListStore,
   reconcileDeleted,
+  currentRecallNotice,
   sameChannel,
 } from './stores.ts';
 
@@ -40,9 +41,11 @@ export {
   ChannelListStore,
   MessageListStore,
   reconcileDeleted,
+  currentRecallNotice,
   sameChannel,
   channelKey,
 } from './stores.ts';
+export type { MessageLookupRef } from './stores.ts';
 
 const ClientContext = createContext<NexconnClient | null>(null);
 
@@ -350,9 +353,15 @@ export function useMessages(
   const recall = useCallback(
     async (message: Message) => {
       const store = storeRef.current;
-      const notice = await client.messages.deleteForAll(
+      const returned = await client.messages.deleteForAll(
         channelRef.current,
         message
+      );
+      // Some SDK builds resolve with the original (emptied) message rather
+      // than the notice; then ask the SDK for its current copy. Content that
+      // is not a recall notification is never shown.
+      const notice = await currentRecallNotice(returned ?? message, (ref) =>
+        client.messages.getById(ref)
       );
       if (storeRef.current === store) {
         const changed = store.remove([message]);

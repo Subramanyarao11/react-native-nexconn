@@ -87,3 +87,25 @@ test('a deleted message is replaced only by a recall notice the SDK actually ret
   store.upsert(result.replacements);
   assert.deepEqual(store.messages.map((m) => `${m.messageId ?? '-'}:${m.content.type}`), ['R:recallNotification']);
 });
+
+test('recall uses the SDK copy when deleteForAll resolves with non-recall content', async () => {
+  const { currentRecallNotice } = await import('../src/react/stores.ts');
+  const emptied = msg({ clientId: 7, messageId: 'Q', sentTime: 1, content: { __type: 'TextMessage', text: '' } });
+  const notice = msg({
+    clientId: 7,
+    messageId: 'Q',
+    sentTime: 1,
+    content: { __type: 'RecallNotificationMessage', operatorId: 'alice' },
+  });
+  const refs = [];
+  const found = await currentRecallNotice(emptied, async (ref) => {
+    refs.push(ref);
+    return notice;
+  });
+  assert.deepEqual(refs, [{ messageId: 'Q', clientId: 7 }]);
+  assert.equal(found.content.type, 'recallNotification');
+  // The SDK still holds plain content: nothing is shown in its place.
+  assert.equal(await currentRecallNotice(emptied, async () => emptied), undefined);
+  // A notice carried by the event itself needs no lookup.
+  assert.equal(await currentRecallNotice(notice, async () => assert.fail('no lookup')), notice);
+});

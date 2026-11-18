@@ -16,6 +16,39 @@ below, then update `docs/STATUS.md`. Never paste tokens or the App Secret.
 Native changes are small (one new method per platform), but both bridges must
 be rebuilt.
 
+## 0. Retest after the Ubuntu run (PR #4 follow-up)
+
+The first Ubuntu run of this plan found four problems. The fixes are on this
+branch; retest these rows first.
+
+| # | Problem found | Fix | Retest | Pass criteria |
+| --- | --- | --- | --- | --- |
+| T1 | Expo R8 APK aborted on sign-in (missing JNI field in `EngineBuilderParam`/`SDKVersion`); sends failed with `MessageNotRegistered` (34021) and history showed `[unknown]` because R8 stripped the runtime `@MessageTag` annotation | `android/consumer-rules.pro` now keeps the whole SDK (`ai.nexconn.**`, `io.rong.**`) with annotations, constructors and JNI methods | B4, then R1, R2, R5 with Metro stopped | B4 prints `R8 kept SDK class names.` and `Release DEX keeps @MessageTag(RC:TxtMsg).`; release app signs in, sends text and PNG to a different client, history shows text (not `[unknown]`) |
+| T2 | Sender's long-press recall removed the message with no notice; recipient's open chat stayed stale | `message.getById` now always asks the SDK (the bridge cache held the pre-recall copy on both platforms). `recall()` uses the SDK's current copy when `deleteForAll` resolves with other content. Neither side invents a notice | F4, F5 on Android and iOS, both chats open | Sender shows `[message recalled]` if the SDK supplies a notice, otherwise the message disappears. Recipient updates live without reopening. Record the `messagesDeleted` payload `content.type` on the recipient |
+| T3 | `verify-android.sh` mapping regex matched unchanged names, so it could never detect renames | Exact `X -> X:` match for six SDK classes, plus a `dexdump` annotation check | B4 | Fails if any listed class is renamed or the annotation is missing |
+| T4 | `verify-packed-consumers.sh` used `grep -q` on `tar` output under `pipefail` | Lists the tarball first, then matches the exact entry | B8, B9 | No SIGPIPE failure |
+
+For T2, if the recipient still sees no `messagesDeleted`, capture
+`adb logcat | grep -i -E "recall|RcNtf|nexconn"` (Android) or the Xcode console
+(iOS) on both devices during the recall, and note whether the sender's
+`deleteForAll` resolved or rejected (Playground status).
+
+Release builds reject plain HTTP. Serve the token server over trusted HTTPS
+for R1–R5, or use a debug build for anything that needs `http://`.
+
+### 16 KB page size (runtime)
+
+Static alignment already passed. On an Android 15+ emulator with a 16 KB
+system image (for example `system-images;android-35;google_apis_ps16k;x86_64`):
+
+```sh
+adb shell getconf PAGE_SIZE      # must print 16384
+adb install -r example/android/app/build/outputs/apk/release/app-release.apk
+```
+
+Cold launch, sign in, send and receive one text message. Pass: no
+`dlopen`/alignment crash in `adb logcat` and chat works.
+
 ## 1. Builds (both VMs) — run first
 
 | # | VM | Command | Pass criteria |

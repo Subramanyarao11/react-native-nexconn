@@ -140,23 +140,37 @@ function compareChannels(a: Channel, b: Channel): number {
  */
 export async function reconcileDeleted(
   deleted: readonly Message[],
-  lookup: (ref: { messageId: string }) => Promise<Message | undefined>
+  lookup: (ref: MessageLookupRef) => Promise<Message | undefined>
 ): Promise<{ replacements: Message[]; removed: readonly Message[] }> {
   const replacements: Message[] = [];
   for (const message of deleted) {
-    if (message.content.type === 'recallNotification') {
-      replacements.push(message);
-      continue;
-    }
-    if (!message.messageId) continue;
-    try {
-      const current = await lookup({ messageId: message.messageId });
-      if (current && current.content.type === 'recallNotification') {
-        replacements.push(current);
-      }
-    } catch {
-      // Not retrievable any more: treat as a plain deletion.
-    }
+    const notice = await currentRecallNotice(message, lookup);
+    if (notice) replacements.push(notice);
   }
   return { replacements, removed: deleted };
+}
+
+/** Reference used to ask the SDK for the current copy of a message. */
+export type MessageLookupRef = { messageId: string; clientId?: number };
+
+/**
+ * Returns the recall notification the SDK holds for `message`: the message
+ * itself when it already carries one, otherwise a fresh SDK lookup by server
+ * id. Returns undefined when the SDK has none (never synthesized).
+ */
+export async function currentRecallNotice(
+  message: Message,
+  lookup: (ref: MessageLookupRef) => Promise<Message | undefined>
+): Promise<Message | undefined> {
+  if (message.content.type === 'recallNotification') return message;
+  if (!message.messageId) return undefined;
+  try {
+    const current = await lookup({
+      messageId: message.messageId,
+      ...(message.clientId > 0 ? { clientId: message.clientId } : {}),
+    });
+    return current?.content.type === 'recallNotification' ? current : undefined;
+  } catch {
+    return undefined; // not retrievable any more: a plain deletion
+  }
 }

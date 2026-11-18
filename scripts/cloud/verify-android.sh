@@ -51,11 +51,35 @@ if [[ "$TARGET" == "expo-release" || "$TARGET" == "all" ]]; then
   # R8 must keep the SDK getters used by the reflection serializer.
   MAPPING="example/android/app/build/outputs/mapping/release/mapping.txt"
   [[ -f "$MAPPING" ]] || { echo "No R8 mapping file: minification did not run"; exit 1; }
-  if true; then
-    if grep -qE "^ai\.nexconn\.chat\.message\.Message -> [a-z]" "$MAPPING"; then
-      echo "ai.nexconn.chat.message.Message was renamed by R8"; exit 1
+  # Unchanged names appear as "a.b.C -> a.b.C:" in the mapping.
+  for CLS in ai.nexconn.chat.message.Message \
+             ai.nexconn.imlib.message.TextMessage \
+             ai.nexconn.imlib.message.ImageMessage \
+             ai.nexconn.imlib.model.MessageTag \
+             ai.nexconn.imlib.internal.model.EngineBuilderParam \
+             ai.nexconn.imlib.internal.model.SDKVersion; do
+    if ! grep -qxF "$CLS -> $CLS:" "$MAPPING"; then
+      echo "R8 renamed or removed $CLS:"; grep -F "$CLS " "$MAPPING" | head -3; exit 1
     fi
-    echo "R8 kept ai.nexconn.chat class names."
+  done
+  echo "R8 kept SDK class names."
+  # The SDK registers message types by their runtime @MessageTag annotation.
+  DEXDUMP="$(ls -d "${ANDROID_HOME:-/nonexistent}"/build-tools/*/dexdump 2>/dev/null | sort -V | tail -1 || true)"
+  REL_APK="$(ls example/android/app/build/outputs/apk/release/*.apk | head -1)"
+  if [[ -n "$DEXDUMP" ]]; then
+    DEXTMP="$(mktemp -d)"
+    unzip -q -o "$REL_APK" 'classes*.dex' -d "$DEXTMP"
+    FOUND=0
+    for DEX in "$DEXTMP"/classes*.dex; do
+      "$DEXDUMP" -a "$DEX" > "$DEXTMP/dump.txt" 2>/dev/null || true
+      # e.g. "VISIBILITY_RUNTIME Lai/nexconn/imlib/model/MessageTag; flag=3 objectName=\"RC:TxtMsg\""
+      if grep -F "Lai/nexconn/imlib/model/MessageTag;" "$DEXTMP/dump.txt" | grep -qF "RC:TxtMsg"; then FOUND=1; fi
+    done
+    rm -rf "$DEXTMP"
+    [[ "$FOUND" == 1 ]] || { echo "Release DEX lacks the @MessageTag annotation on TextMessage"; exit 1; }
+    echo "Release DEX keeps @MessageTag(RC:TxtMsg)."
+  else
+    echo "dexdump not found under ANDROID_HOME/build-tools; skipped annotation check"
   fi
 fi
 

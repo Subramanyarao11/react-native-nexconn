@@ -11,7 +11,8 @@ echo "Working in $WORK"
 
 # Build lib/ first: a clean checkout has no compiled output to pack.
 (cd "$ROOT" && $YARN install --immutable && $YARN build && $YARN pack --out "$WORK/react-native-nexconn.tgz")
-tar -tzf "$WORK/react-native-nexconn.tgz" | grep -q "package/lib/module/index.js" \
+TAR_LIST="$(tar -tzf "$WORK/react-native-nexconn.tgz")"
+grep -qxF "package/lib/module/index.js" <<<"$TAR_LIST" \
   || { echo "Tarball is missing lib/module/index.js"; exit 1; }
 
 cat > "$WORK/consumer-check.tsx" <<'EOF'
