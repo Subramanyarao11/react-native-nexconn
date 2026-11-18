@@ -22,14 +22,15 @@ nexconn_chat_version = $NexconnChatVersion if defined?($NexconnChatVersion) && $
 
 Pod::Spec.new do |s|
   s.name         = "Nexconn"
-  s.version      = package["version"]
+  # CocoaPods autolinking requires a version >= 0, which excludes 0.0.0-development.
+  s.version      = package["version"].delete_suffix("-development")
   s.summary      = package["description"]
   s.homepage     = package["homepage"]
   s.license      = package["license"]
   s.authors      = package["author"]
 
   s.platforms    = { :ios => min_ios_version_supported }
-  s.source       = { :git => "https://github.com/Subramanyarao11/react-native-nexconn.git", :tag => "v#{s.version}" }
+  s.source       = { :git => "https://github.com/Subramanyarao11/react-native-nexconn.git", :tag => "v#{package["version"]}" }
 
   s.source_files = "ios/**/*.{h,m,mm,swift,cpp}"
   s.private_header_files = "ios/**/*.h"
