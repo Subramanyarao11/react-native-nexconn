@@ -257,3 +257,47 @@ test('dispose detaches from the transport', () => {
   client.dispose();
   assert.equal(transport.listenerCount, 0);
 });
+
+test('restoreSession adopts a native session that survived a JS reload', async () => {
+  const { client, transport } = createMockClient();
+  transport.on('engine.getSessionState', () => ({
+    initialized: true,
+    connectionStatus: ConnectionStatus.connected,
+    userId: 'alice',
+    generation: 4,
+  }));
+  const snap = await client.restoreSession();
+  assert.equal(snap.initialized, true);
+  assert.equal(snap.userId, 'alice');
+  assert.equal(snap.connectionStatus, ConnectionStatus.connected);
+  assert.equal(snap.generation, 4);
+  // Events from the restored session are delivered; older ones are not.
+  const seen = [];
+  client.on('messageReceived', (e) => seen.push(e.message.messageId));
+  transport.emit('MessageHandler.onMessageReceived', { message: fixtures.textMessage({ messageId: 'old' }) }, { generation: 3 });
+  transport.emit('MessageHandler.onMessageReceived', { message: fixtures.textMessage({ messageId: 'now' }) }, { generation: 4 });
+  assert.deepEqual(seen, ['now']);
+});
+
+test('restoreSession leaves state untouched when the SDK is not initialized', async () => {
+  const { client, transport } = createMockClient();
+  transport.on('engine.getSessionState', () => ({ initialized: false, generation: 0 }));
+  const snap = await client.restoreSession();
+  assert.equal(snap.initialized, false);
+  assert.equal(snap.userId, undefined);
+});
+
+test('initialize after a JS reload restores the native session', async () => {
+  const { client, transport } = createMockClient();
+  transport.on('engine.initialize', () => ({ alreadyInitialized: true, platform: 'ios', sdkVersion: '26.4.2' }));
+  transport.on('engine.getSessionState', () => ({
+    initialized: true,
+    connectionStatus: ConnectionStatus.connected,
+    userId: 'bob',
+    generation: 2,
+  }));
+  const result = await client.initialize({ appKey: 'k' });
+  assert.equal(result.alreadyInitialized, true);
+  assert.equal(client.getSnapshot().userId, 'bob');
+  assert.equal(client.getSnapshot().generation, 2);
+});

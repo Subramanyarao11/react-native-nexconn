@@ -689,6 +689,19 @@ internal object NexconnBridge {
       NCEngine.disconnect(a.bool("disablePush") ?: false)
       c.resolve(mapOf("generation" to gen))
     }
+    on("engine.getSessionState") { _, c ->
+      // Survives JS reloads (this object is process-wide). The SDK is only
+      // queried once it has been initialized.
+      val initialized = initializedAppKey != null
+      c.resolve(
+        mapOf(
+          "initialized" to initialized,
+          "connectionStatus" to if (initialized) NCEngine.getConnectionStatus() else null,
+          "userId" to if (initialized) NCEngine.getCurrentUserId() else null,
+          "generation" to generation.get(),
+        ),
+      )
+    }
     on("engine.getConnectionStatus") { _, c -> c.resolve(NCEngine.getConnectionStatus()) }
     on("engine.getCurrentUserId") { _, c -> c.resolve(NCEngine.getCurrentUserId()) }
     on("engine.getVersion") { _, c -> c.resolve(NCEngine.getVersion()) }

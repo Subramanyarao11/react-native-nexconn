@@ -58,3 +58,32 @@ test('channel list puts pinned first then most recent', () => {
   assert.equal(store.remove([{ channelType: 1, channelId: 'new' }]), true);
   assert.equal(store.channels.length, 2);
 });
+
+test('a deleted message is replaced only by a recall notice the SDK actually returns', async () => {
+  const { reconcileDeleted } = await import('../src/react/stores.ts');
+  const recalled = msg({ clientId: 1, messageId: 'R', sentTime: 1 });
+  const deleted = msg({ clientId: 2, messageId: 'D', sentTime: 2 });
+  const local = msg({ clientId: 3, messageId: null, sentTime: 3 });
+  const notice = msg({
+    clientId: 1,
+    messageId: 'R',
+    sentTime: 1,
+    content: { __type: 'RecallNotificationMessage', operatorId: 'alice' },
+  });
+  const lookups = [];
+  const result = await reconcileDeleted([recalled, deleted, local], async ({ messageId }) => {
+    lookups.push(messageId);
+    if (messageId === 'R') return notice;
+    if (messageId === 'D') throw new Error('gone');
+    return undefined;
+  });
+  assert.deepEqual(lookups, ['R', 'D']);
+  assert.deepEqual(result.replacements.map((m) => m.content.type), ['recallNotification']);
+  assert.equal(result.removed.length, 3);
+
+  const store = new MessageListStore(bob);
+  store.upsert([recalled, deleted, local]);
+  store.remove(result.removed);
+  store.upsert(result.replacements);
+  assert.deepEqual(store.messages.map((m) => `${m.messageId ?? '-'}:${m.content.type}`), ['R:recallNotification']);
+});

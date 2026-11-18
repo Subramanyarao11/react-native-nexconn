@@ -359,7 +359,14 @@ function Chat({
 }) {
   const client = useNexconnClient();
   const { userId } = useConnection();
-  const { messages, loadOlder, send, loading, error } = useMessages(channel);
+  const {
+    messages,
+    loadOlder,
+    send,
+    recall: recallMessage,
+    loading,
+    error,
+  } = useMessages(channel);
   const typing = useTypingUsers(channel);
   const [text, setText] = useState('');
   const [mediaPath, setMediaPath] = useState('');
@@ -428,7 +435,7 @@ function Chat({
 
   const recall = async (message: Message) => {
     try {
-      await client.messages.deleteForAll(channel, message);
+      await recallMessage(message);
       setStatus('Recalled');
     } catch (e) {
       setStatus(describeError(e));

@@ -130,3 +130,33 @@ function compareChannels(a: Channel, b: Channel): number {
   if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
   return activity(b) - activity(a);
 }
+
+/**
+ * Decides how to present messages reported as deleted. A recalled message
+ * may be replaced by a recall notification that the SDK keeps under the same
+ * server id; `lookup` asks the SDK for the current copy. Only an actual
+ * `recallNotification` returned by the SDK is shown — nothing is synthesized.
+ * Everything else is removed.
+ */
+export async function reconcileDeleted(
+  deleted: readonly Message[],
+  lookup: (ref: { messageId: string }) => Promise<Message | undefined>
+): Promise<{ replacements: Message[]; removed: readonly Message[] }> {
+  const replacements: Message[] = [];
+  for (const message of deleted) {
+    if (message.content.type === 'recallNotification') {
+      replacements.push(message);
+      continue;
+    }
+    if (!message.messageId) continue;
+    try {
+      const current = await lookup({ messageId: message.messageId });
+      if (current && current.content.type === 'recallNotification') {
+        replacements.push(current);
+      }
+    } catch {
+      // Not retrievable any more: treat as a plain deletion.
+    }
+  }
+  return { replacements, removed: deleted };
+}

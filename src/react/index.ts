@@ -29,11 +29,17 @@ import type {
 } from '../core/types.ts';
 import type { PagedQuery } from '../core/query.ts';
 import { isMediaContent } from '../core/encode.ts';
-import { ChannelListStore, MessageListStore, sameChannel } from './stores.ts';
+import {
+  ChannelListStore,
+  MessageListStore,
+  reconcileDeleted,
+  sameChannel,
+} from './stores.ts';
 
 export {
   ChannelListStore,
   MessageListStore,
+  reconcileDeleted,
   sameChannel,
   channelKey,
 } from './stores.ts';
@@ -43,10 +49,22 @@ const ClientContext = createContext<NexconnClient | null>(null);
 export interface NexconnProviderProps {
   client: NexconnClient;
   children?: ReactNode;
+  /**
+   * Re-reads the native session on mount (default true), so a JS reload
+   * while the native SDK stays connected restores the signed-in state.
+   */
+  restoreSession?: boolean;
 }
 
 /** Makes a client available to the hooks below. */
-export function NexconnProvider({ client, children }: NexconnProviderProps) {
+export function NexconnProvider({
+  client,
+  children,
+  restoreSession = true,
+}: NexconnProviderProps) {
+  useEffect(() => {
+    if (restoreSession) client.restoreSession().catch(() => undefined);
+  }, [client, restoreSession]);
   return createElement(ClientContext.Provider, { value: client }, children);
 }
 
@@ -196,6 +214,11 @@ export interface UseMessagesResult extends AsyncState {
   loadOlder: () => Promise<void>;
   /** Sends content, picking `send` or `sendMedia` automatically. */
   send: (content: OutgoingContent, options?: SendOptions) => Promise<Message>;
+  /**
+   * Recalls a message for everyone. The recall notification returned by the
+   * SDK (if any) replaces the original in the list immediately.
+   */
+  recall: (message: Message) => Promise<Message | undefined>;
 }
 
 /**
@@ -274,7 +297,16 @@ export function useMessages(
         ({ message }) => message && upsert([message])
       ),
       client.on('messagesDeleted', ({ messages: list }) => {
-        if (storeRef.current.remove(list)) publish();
+        const store = storeRef.current;
+        const mine = list.filter((m) => sameChannel(m.channel, store.channel));
+        if (mine.length === 0) return;
+        reconcileDeleted(mine, (ref) => client.messages.getById(ref))
+          .then(({ replacements, removed }) => {
+            if (storeRef.current !== store) return; // channel/session changed
+            const changed = store.remove(removed);
+            if (store.upsert(replacements) || changed) publish();
+          })
+          .catch(() => undefined);
       }),
       client.on('expiredMessagesDeleted', ({ messages: list }) => {
         if (storeRef.current.remove(list)) publish();
@@ -315,7 +347,24 @@ export function useMessages(
     [client]
   );
 
-  return { messages, hasMore, loadOlder, send, ...state };
+  const recall = useCallback(
+    async (message: Message) => {
+      const store = storeRef.current;
+      const notice = await client.messages.deleteForAll(
+        channelRef.current,
+        message
+      );
+      if (storeRef.current === store) {
+        const changed = store.remove([message]);
+        const added = notice !== undefined && store.upsert([notice]);
+        if (changed || added) publish();
+      }
+      return notice;
+    },
+    [client]
+  );
+
+  return { messages, hasMore, loadOlder, send, recall, ...state };
 }
 
 /** Total unread count, refreshed on new messages and unread syncs. */

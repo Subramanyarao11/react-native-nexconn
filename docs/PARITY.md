@@ -6,7 +6,7 @@ Pinned native SDKs: Android `ai.nexconn.chat:chat:26.4.2`, iOS `NexconnChat/Chat
 
 Statuses describe source-level implementation against the pinned SDK API. **No row is verified on a device or against the live service yet**; see docs/STATUS.md and docs/CLOUD_TEST_RUNBOOK.md. "unavailable upstream" means the vendor SDK for that platform has no equivalent API, and the bridge rejects the call with `unsupported`.
 
-Totals: 151 bridge methods, 18 paged query kinds, 62 SDK event types.
+Totals: 152 bridge methods, 18 paged query kinds, 62 SDK event types.
 
 ## Lifecycle, settings, push & do-not-disturb
 
@@ -22,6 +22,7 @@ Totals: 151 bridge methods, 18 paged query kinds, 62 SDK event types.
 | `engine.getNoDisturbTime` | implemented | implemented |
 | `engine.getPushContentShowStatus` | implemented | unavailable upstream |
 | `engine.getServerTimeDelta` | implemented | implemented |
+| `engine.getSessionState` | implemented | implemented |
 | `engine.getVersion` | implemented | implemented |
 | `engine.initialize` | implemented | implemented |
 | `engine.registerCustomMessages` | implemented | implemented |

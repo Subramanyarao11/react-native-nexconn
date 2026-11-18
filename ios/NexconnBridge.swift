@@ -621,6 +621,17 @@ public final class NexconnBridge: NSObject {
       NCEngine.disconnect(disablePush: a.bool("disablePush") ?? false)
       c.resolve(["generation": gen])
     }
+    on("engine.getSessionState") { [unowned self] _, c in
+      // Survives JS reloads (this object is process-wide). The SDK is only
+      // queried once it has been initialized.
+      let initialized = self.currentAppKey() != nil
+      c.resolve([
+        "initialized": initialized,
+        "connectionStatus": initialized ? (NCEngine.getConnectionStatus().rawValue as Any) : (NSNull() as Any),
+        "userId": initialized ? ((NCEngine.getCurrentUserId() ?? "") as Any) : (NSNull() as Any),
+        "generation": self.currentGeneration(),
+      ])
+    }
     on("engine.getConnectionStatus") { _, c in c.resolve(NCEngine.getConnectionStatus().rawValue) }
     on("engine.getCurrentUserId") { _, c in c.resolve(NCEngine.getCurrentUserId()) }
     on("engine.getVersion") { _, c in c.resolve(NCEngine.getVersion()) }

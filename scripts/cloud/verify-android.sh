@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Android native builds for both fixtures. Ubuntu or macOS with JDK 17 and an
 # Android SDK (ANDROID_HOME) containing platform 36/37 and build-tools 37.
-# Usage: scripts/cloud/verify-android.sh [cli|expo|all]
+# Usage: scripts/cloud/verify-android.sh [cli|expo|expo-release|all]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 TARGET="${1:-all}"
@@ -39,6 +39,24 @@ if [[ "$TARGET" == "expo" || "$TARGET" == "all" ]]; then
   (cd example/android && ./gradlew --no-daemon --console=plain \
      -PreactNativeArchitectures=x86_64,arm64-v8a assembleDebug)
   ls -la example/android/app/build/outputs/apk/debug/
+fi
+
+if [[ "$TARGET" == "expo-release" || "$TARGET" == "all" ]]; then
+  echo "== Expo fixture: release APK (R8 + consumer-rules.pro)"
+  (cd example && npx expo prebuild --platform android --clean --no-install)
+  (cd example/android && ./gradlew --no-daemon --console=plain \
+     -PreactNativeArchitectures=x86_64,arm64-v8a \
+     -Pandroid.enableMinifyInReleaseBuilds=true assembleRelease)
+  ls -la example/android/app/build/outputs/apk/release/
+  # R8 must keep the SDK getters used by the reflection serializer.
+  MAPPING="example/android/app/build/outputs/mapping/release/mapping.txt"
+  [[ -f "$MAPPING" ]] || { echo "No R8 mapping file: minification did not run"; exit 1; }
+  if true; then
+    if grep -qE "^ai\.nexconn\.chat\.message\.Message -> [a-z]" "$MAPPING"; then
+      echo "ai.nexconn.chat.message.Message was renamed by R8"; exit 1
+    fi
+    echo "R8 kept ai.nexconn.chat class names."
+  fi
 fi
 
 echo "== 16 KB page-size check of packaged native libraries (informational)"

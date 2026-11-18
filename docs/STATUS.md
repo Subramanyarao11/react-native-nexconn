@@ -96,6 +96,21 @@ The consumer npm installs reported advisories before and after tarball
 installation: CLI 67 → 68 high; Expo 25 → 26 high, 2 moderate throughout.
 These are build and typecheck results, not a dependency security audit.
 
+## Changes after iOS session 1 (not yet verified natively)
+
+Branch `fix/session-restore-recall-release`; test plan in
+[cloud session 2](CLOUD_SESSION_2.md).
+
+- JS reload: new `engine.getSessionState` on both bridges;
+  `client.restoreSession()` (called by `NexconnProvider` and by
+  `initialize()` when already initialized) restores status, user and
+  generation. Addresses iOS L11 partial.
+- Recall: `useMessages` shows an SDK-provided recall notice when one exists
+  (otherwise removes the message) and gains `recall()`. Addresses iOS L7 partial.
+- `verify-packed-consumers.sh` builds before packing; new `expo-release`
+  targets in `verify-android.sh` / `verify-ios.sh`.
+- JS checks on the dev Mac: 53/53 tests, typecheck, lint (0 errors), build.
+
 ## Pending verification (cloud VMs / devices)
 
 Plan (18–19 November 2026): the iOS run (`verify-ios.sh`) is in progress on
