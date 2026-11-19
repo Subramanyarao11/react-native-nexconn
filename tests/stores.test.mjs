@@ -109,3 +109,27 @@ test('recall uses the SDK copy when deleteForAll resolves with non-recall conten
   // A notice carried by the event itself needs no lookup.
   assert.equal(await currentRecallNotice(notice, async () => assert.fail('no lookup')), notice);
 });
+
+test('reconcileWindow applies SDK truth inside the fetched window only', () => {
+  const store = new MessageListStore(bob);
+  store.upsert([
+    msg({ clientId: 1, messageId: 'OLD', sentTime: 1 }),
+    msg({ clientId: 2, messageId: 'GONE', sentTime: 11 }),
+    msg({ clientId: 3, messageId: 'R', sentTime: 10 }),
+    msg({ clientId: 4, messageId: null, sentTime: 12 }),
+  ]);
+  const recalled = msg({
+    clientId: 3,
+    messageId: 'R',
+    sentTime: 10,
+    content: { __type: 'RecallNotificationMessage', operatorId: 'alice' },
+  });
+  // Window = sentTime >= 10: GONE (11) is missing from the SDK page, OLD (1) is outside it.
+  const page = [msg({ clientId: 9, messageId: 'NEW', sentTime: 13 }), recalled];
+  assert.equal(store.reconcileWindow(page), true);
+  assert.deepEqual(
+    store.messages.map((m) => `${m.messageId ?? '-'}:${m.content.type}`),
+    ['OLD:text', 'R:recallNotification', '-:text', 'NEW:text']
+  );
+  assert.equal(store.reconcileWindow([]), false);
+});

@@ -364,6 +364,7 @@ function Chat({
     loadOlder,
     send,
     recall: recallMessage,
+    refresh,
     loading,
     error,
   } = useMessages(channel);
@@ -450,6 +451,7 @@ function Chat({
           {channel.channelType === ChannelType.group ? '# ' : ''}
           {channel.channelId}
         </Text>
+        <Button title="Refresh" onPress={refresh} />
       </View>
       {typing.length > 0 ? (
         <Text style={styles.hint}>

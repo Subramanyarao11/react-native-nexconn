@@ -110,16 +110,26 @@ Branch `fix/session-restore-recall-release`; test plan in
 - `verify-packed-consumers.sh` builds before packing; new `expo-release`
   targets in `verify-android.sh` / `verify-ios.sh`.
 - JS checks on the dev Mac: 53/53 tests, typecheck, lint (0 errors), build.
-- Ubuntu run of the branch at `dce119b` found four problems: the Expo R8
-  APK aborted on sign-in and failed sends with `MessageNotRegistered` 34021,
-  live recall did not render, and two verifier checks were wrong. Fixes:
-  - `consumer-rules.pro` keeps the whole SDK, including annotations and JNI.
-  - `message.getById` bypasses the bridge cache on both platforms.
-  - `recall()` falls back to a fresh SDK lookup.
-  - The verifier checks were corrected.
+- Ubuntu run at `dce119b` found four problems: the R8 release crash and
+  `MessageNotRegistered` 34021, recall not rendering, and two wrong verifier
+  checks. `5ce885f` fixed them: the consumer rules keep the whole SDK,
+  `getById` bypasses the cache, and `recall()` uses a fresh lookup.
+- Ubuntu retest at `5ce885f` passed:
+  - the Expo R8 release build and its runtime (sign-in, text, PNG, history,
+    cold re-sign-in);
+  - the verifiers;
+  - 16 KB runtime on API 35;
+  - the sender side of recall.
 
-  These fixes are not yet verified natively; see section 0 of
-  [cloud session 2](CLOUD_SESSION_2.md). The dev Mac passes 54/54 JS tests.
+  The recipient side of recall still fails: no recall event reached JS while
+  the chat was open.
+- Follow-up, not yet verified natively:
+  - native per-event tracing (`NexconnBridge` log tag on both platforms);
+  - `useMessages().refresh()`, which reconciles the open chat against the
+    SDK's newest page, plus a Refresh button in the demo.
+
+  Retest rows T5–T8 are in [cloud session 2](CLOUD_SESSION_2.md). The dev Mac
+  passes 55/55 JS tests.
 
 ## Pending verification (cloud VMs / devices)
 

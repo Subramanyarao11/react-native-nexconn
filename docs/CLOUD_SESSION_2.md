@@ -16,29 +16,62 @@ below, then update `docs/STATUS.md`. Never paste tokens or the App Secret.
 Native changes are small (one new method per platform), but both bridges must
 be rebuilt.
 
-## 0. Retest after the Ubuntu run (PR #4 follow-up)
+## 0. Retest status (PR #4)
 
-The first Ubuntu run of this plan found four problems. The fixes are on this
-branch; retest these rows first.
+### Ubuntu Android retest at `5ce885f`: results
 
-| # | Problem found | Fix | Retest | Pass criteria |
-| --- | --- | --- | --- | --- |
-| T1 | Expo R8 APK aborted on sign-in (missing JNI field in `EngineBuilderParam`/`SDKVersion`); sends failed with `MessageNotRegistered` (34021) and history showed `[unknown]` because R8 stripped the runtime `@MessageTag` annotation | `android/consumer-rules.pro` now keeps the whole SDK (`ai.nexconn.**`, `io.rong.**`) with annotations, constructors and JNI methods | B4, then R1, R2, R5 with Metro stopped | B4 prints `R8 kept SDK class names.` and `Release DEX keeps @MessageTag(RC:TxtMsg).`; release app signs in, sends text and PNG to a different client, history shows text (not `[unknown]`) |
-| T2 | Sender's long-press recall removed the message with no notice; recipient's open chat stayed stale | `message.getById` now always asks the SDK (the bridge cache held the pre-recall copy on both platforms). `recall()` uses the SDK's current copy when `deleteForAll` resolves with other content. Neither side invents a notice | F4, F5 on Android and iOS, both chats open | Sender shows `[message recalled]` if the SDK supplies a notice, otherwise the message disappears. Recipient updates live without reopening. Record the `messagesDeleted` payload `content.type` on the recipient |
-| T3 | `verify-android.sh` mapping regex matched unchanged names, so it could never detect renames | Exact `X -> X:` match for six SDK classes, plus a `dexdump` annotation check | B4 | Fails if any listed class is renamed or the annotation is missing |
-| T4 | `verify-packed-consumers.sh` used `grep -q` on `tar` output under `pipefail` | Lists the tarball first, then matches the exact entry | B8, B9 | No SIGPIPE failure |
+| # | Result |
+| --- | --- |
+| T1 R8 release (B4, R1, R2, R5) | Pass: exact mappings and `@MessageTag` in the DEX. Sign-in, two-way text, PNG and history all work without Metro, with no 34021 errors. |
+| T3/T4 verifiers (B4, B8) | Pass |
+| 16 KB runtime (API 35, `PAGE_SIZE=16384`) | Pass |
+| T2 sender recall (F4) | Pass: the message disappeared; no notice was invented |
+| **T2 recipient recall (F5)** | **Fail.** The recipient's open chat kept the message; no `messagesDeleted` or `messagesUpdated` reached JS |
 
-For T2, if the recipient still sees no `messagesDeleted`, capture
-`adb logcat | grep -i -E "recall|RcNtf|nexconn"` (Android) or the Xcode console
-(iOS) on both devices during the recall, and note whether the sender's
-`deleteForAll` resolved or rejected (Playground status).
+### What changed for the recipient-recall failure
 
-Release builds reject plain HTTP. Serve the token server over trusted HTTPS
-for R1–R5, or use a debug build for anything that needs `http://`.
+Bytecode analysis of the pinned AAR shows how `ConnectionAdapter` handles a
+recall:
+- It registers `RSIMEngine.setMessageRecalledListener`.
+- It converts the recalled message and calls `MessageHandler.onMessageDeleted`
+  on every registered handler.
+- It does the same for a received `RC:RcNtf` message.
 
-### 16 KB page size (runtime)
+There is no filter that would skip our handler. The recipient showed the
+change only after reopening, so its local database was updated, but no live
+callback was observed. This build adds what is needed to find out where the
+event stops:
 
-Static alignment already passed. On an Android 15+ emulator with a 16 KB
+- **Native trace:** the bridge logs every SDK callback type, never the
+  payload:
+  - Android: `adb logcat -s NexconnBridge`, lines like
+    `sdk event MessageHandler.onMessageDeleted gen=N js=true`.
+  - iOS: device or simulator log containing `NexconnBridge sdk event`.
+
+  Serialization drops are logged as `dropped <type>`.
+- **SDK-backed catch-up:** `useMessages().refresh()` re-reads the newest page
+  from the SDK and reconciles it: removed messages go, recalled ones are
+  replaced. The demo chat has a **Refresh** button. This is not a live event;
+  it shows only what the SDK returns.
+
+### Retest these rows first
+
+| # | Steps | Record |
+| --- | --- | --- |
+| T5 | Android ↔ Android (CLI debug is fine): both chats open. Start `adb -s <recipient> logcat -s NexconnBridge` before the recall, then recall from the sender | Whether `sdk event MessageHandler.onMessageDeleted` appears on the recipient (a) at all, (b) with `js=true`, and (c) whether JS then logs `messagesDeleted` |
+| T6 | Same, then press **Refresh** on the recipient | The message is removed or replaced without leaving the chat |
+| T7 | Same as T5 with an iOS recipient (simulator log filtered on `NexconnBridge`) | Same as T5; this tells us whether the problem is Android-only |
+| T8 | Recall a message the recipient has **not** opened yet, then open the chat | It shows as recalled or removed; compare with T5 |
+
+If T5 shows no native `onMessageDeleted` on the recipient, the Nexconn
+Android SDK is not delivering the recall live (our handler is registered, and
+other `MessageHandler` events do arrive). Then capture the unfiltered
+`adb logcat` lines that mention `RcCmd`, `RcNtf` or `recall` on the recipient
+for a vendor report, and accept `refresh()` as the documented workaround.
+
+### 16 KB page size (runtime): passed at `5ce885f`
+
+Static alignment also passed. To repeat it: On an Android 15+ emulator with a 16 KB
 system image (for example `system-images;android-35;google_apis_ps16k;x86_64`):
 
 ```sh

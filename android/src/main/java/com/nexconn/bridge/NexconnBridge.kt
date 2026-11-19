@@ -283,7 +283,12 @@ internal object NexconnBridge {
     methods[method] = handler
   }
 
+  private val LOG_TAG = "NexconnBridge"
+
   private fun emit(type: String, payload: Any?, opId: String?) {
+    // Trace every SDK callback (type only, never payloads) so a missing JS
+    // event can be located: `adb logcat -s NexconnBridge`.
+    if (opId == null) android.util.Log.d(LOG_TAG, "sdk event $type gen=${generation.get()} js=${emitter != null}")
     val target = emitter ?: return
     val envelope = try {
       JSONObject()
@@ -292,7 +297,8 @@ internal object NexconnBridge {
         .put("payload", NexconnSerializer.encode(payload))
         .also { if (opId != null) it.put("opId", opId) }
         .toString()
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+      android.util.Log.w(LOG_TAG, "dropped $type: serialization failed", t)
       return
     }
     target(envelope)

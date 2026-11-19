@@ -88,6 +88,27 @@ export class MessageListStore {
     return true;
   }
 
+  /**
+   * Reconciles the store with a fresh page of the newest messages from the
+   * SDK. Within the time window the page covers, sent messages the SDK no
+   * longer returns are removed and changed ones (edits, recall notices) are
+   * replaced. Unsent local echoes are kept. An empty page changes nothing.
+   */
+  reconcileWindow(page: readonly Message[]): boolean {
+    const mine = page.filter((m) => sameChannel(m.channel, this.channel));
+    if (mine.length === 0) return false;
+    const oldest = Math.min(...mine.map((m) => m.sentTime));
+    const present = new Set(mine.flatMap(messageKeys));
+    const stale = this.items.filter(
+      (m) =>
+        m.messageId !== undefined &&
+        m.sentTime >= oldest &&
+        !messageKeys(m).some((k) => present.has(k))
+    );
+    const removed = this.remove(stale);
+    return this.upsert(mine) || removed;
+  }
+
   reset(): void {
     this.items = [];
   }

@@ -222,6 +222,12 @@ export interface UseMessagesResult extends AsyncState {
    * SDK (if any) replaces the original in the list immediately.
    */
   recall: (message: Message) => Promise<Message | undefined>;
+  /**
+   * Re-reads the newest page from the SDK and reconciles the list (removed,
+   * edited and recalled messages). Use when the app may have missed a live
+   * event, e.g. on screen focus or pull-to-refresh.
+   */
+  refresh: () => Promise<void>;
 }
 
 /**
@@ -373,7 +379,26 @@ export function useMessages(
     [client]
   );
 
-  return { messages, hasMore, loadOlder, send, recall, ...state };
+  const refresh = useCallback(async () => {
+    const store = storeRef.current;
+    const query = client.messages.createMessagesQuery({
+      channel: channelRef.current,
+      pageSize,
+      isAscending: false,
+    });
+    try {
+      const page = await query.loadNextPage();
+      if (storeRef.current === store && store.reconcileWindow(page.items)) {
+        publish();
+      }
+    } catch (error) {
+      if (storeRef.current === store) setState({ loading: false, error });
+    } finally {
+      query.release().catch(() => undefined);
+    }
+  }, [client, pageSize]);
+
+  return { messages, hasMore, loadOlder, send, recall, refresh, ...state };
 }
 
 /** Total unread count, refreshed on new messages and unread syncs. */

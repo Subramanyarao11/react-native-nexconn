@@ -178,11 +178,17 @@ public final class NexconnBridge: NSObject {
     let targets = Array(emitters.values)
     let gen = generation
     stateLock.unlock()
+    // Trace every SDK callback (type only, never payloads) so a missing JS
+    // event can be located in the Xcode/simulator log ("NexconnBridge").
+    if opId == nil { NSLog("NexconnBridge sdk event %@ gen=%ld js=%@", type as NSString, gen, (targets.isEmpty ? "no" : "yes") as NSString) }
     guard !targets.isEmpty else { return }
     var envelope: [String: Any] = ["type": type, "generation": gen, "payload": NexconnSerializer.encode(payload)]
     if let opId = opId { envelope["opId"] = opId }
     guard let data = try? JSONSerialization.data(withJSONObject: envelope),
-          let json = String(data: data, encoding: .utf8) else { return }
+          let json = String(data: data, encoding: .utf8) else {
+      NSLog("NexconnBridge dropped %@: serialization failed", type as NSString)
+      return
+    }
     targets.forEach { $0(json) }
   }
 
