@@ -69,6 +69,62 @@ other `MessageHandler` events do arrive). Then capture the unfiltered
 `adb logcat` lines that mention `RcCmd`, `RcNtf` or `recall` on the recipient
 for a vendor report, and accept `refresh()` as the documented workaround.
 
+### iOS recipient recall after an account switch (eb3cb59 failure)
+
+**Evidence (macOS, eb3cb59):**
+- Recalls worked live in fresh app processes, in both directions between
+  Android and iOS (X5/T7).
+- On one iOS simulator the recipient switched from Alice to Bob (disconnect
+  then connect in the same process, generation 3). For a fresh message, the
+  sender logged `MessageHandler.onMessageDeleted`. Bob's simulator logged no
+  native callback and JS saw no `messagesDeleted`. Refresh removed the bubble
+  in place, so the SDK database had the recall.
+
+**Trace (static, pinned `NexconnChat` 26.4.2):**
+1. JS. The generation filter and normalization never saw an envelope. The
+   native trace prints before JS filtering, and nothing was printed.
+2. Our bridge. Handlers are added once at initialize with a fixed identifier
+   and never removed. `resetSession()` clears only queries and the message
+   cache. No change on switch.
+3. SDK Swift layer:
+   - `MessageDelegateBridge.makeMessageRecalledListener` converts the message
+     and calls `onMessageDeleted` on every handler, with no condition.
+   - It is bound in `MessageDelegateBridge.bindIfNeeded()`, which is called
+     only from `DefaultEngineAdapter.initialize`. It binds to the current
+     `RSIMEngine` and skips if that engine is already bound.
+   - `disconnect` only calls `clearConnectionScopedState()`, which doesn't
+     touch listeners.
+4. The callback is lost below the SDK's Swift layer, in the closed native
+   core. After disconnect and connect in one process, the core stopped
+   reporting recalls. Received messages still reached Bob, but the bubble
+   also showed up through the chat's history load, so that row didn't prove
+   live delivery.
+
+**Fix (iOS bridge):** `engine.disconnect` now marks the engine stale. The
+next `engine.connect` calls `NCEngine.initialize` again with the original
+arguments before connecting, then re-adds the handlers. The SDK supports
+this through `prepareForEngineReinitialize`, which destroys the old engine,
+and `bindIfNeeded` rebinds every listener to the new one. A switched account
+then runs on the same engine state as a cold start, which is the state
+where recall works. The bridge logs
+`NexconnBridge re-initializing SDK before connect gen=N`.
+
+Android is unchanged: its post-switch recall hasn't been tested (T11).
+
+| # | Steps | Pass criteria |
+| --- | --- | --- |
+| T9 | iOS, 2 simulators, sender on a separate account. Recipient Alice, both chats open: recall a fresh message. Recipient signs out, signs in as Bob, opens the chat. Sender sends a new message and recalls it | Bob's log shows `re-initializing SDK before connect`, then `sdk event MessageHandler.onMessageReceived` for the new message, then `sdk event MessageHandler.onMessageDeleted js=yes`. JS gets exactly one `messagesDeleted` for that id (record `content.type`). The bubble disappears, or becomes a real SDK recall notice, without Refresh or reopening |
+| T10 | After T9, switch back Bob → Alice and repeat | Same as T9 |
+| T11 | Android, same scenario as T9 (recipient switches on one emulator) | Same as T9, without the re-init line. If it fails like iOS did, report it and I'll add the same re-init on Android |
+| T12 | After T9, as Bob: F2 (3 messages), typing, X9 (offline delivery), F1 (JS reload) | Each event arrives once; no `-1` "lower-layer API not available" errors on connect |
+
+Separate follow-ups, not part of this fix:
+- Android download of an iOS PNG stalls (X4).
+- Location send fails with 31610 / `JsonParserFailed` on both platforms
+  (X10).
+- The Android receipt label lags (X3).
+- The iOS sender sees its own edit only after a refresh (X6, F6).
+
 ### 16 KB page size (runtime): passed at `5ce885f`
 
 Static alignment also passed. To repeat it: On an Android 15+ emulator with a 16 KB

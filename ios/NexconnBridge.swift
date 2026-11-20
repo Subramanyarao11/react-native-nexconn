@@ -77,6 +77,10 @@ public final class NexconnBridge: NSObject {
   private var initializedAppKey: String?
   private var generation = 0
   private var connecting = false
+  /// Arguments of the first successful initialize, reused to re-initialize.
+  private var initArgs: Args?
+  /// Set by disconnect: the next connect re-initializes the SDK first.
+  private var engineNeedsRefresh = false
   private let callbackQueue = DispatchQueue(label: "ai.nexconn.reactnative.callbacks")
 
   private typealias Loader = (@escaping ([Any], Int?, Bool?, NCError?) -> Void) -> Void
@@ -539,6 +543,20 @@ public final class NexconnBridge: NSObject {
 
   // MARK: - engine.*
 
+  private func makeInitParams(_ a: Args) throws -> InitParams {
+    let params = InitParams(appKey: try a.reqStr("appKey"))
+    if let raw = a.int("areaCode") { params.areaCode = try enumValue(AreaCode.self, raw, "areaCode") }
+    if let navi = a.str("naviServer") { params.naviServer = navi }
+    if let raw = a.int("logLevel") { params.logLevel = try enumValue(LogLevel.self, raw, "logLevel") }
+    if let v = a.bool("enableSyncEmptyTopConversation") { params.enableSyncEmptyTopConversation = v }
+    if let v = a.bool("forceKeepAlive") { params.forceKeepAlive = v }
+    if let v = a.bool("crashMonitorEnabled") { params.crashMonitorEnabled = v }
+    if let o = a.dict("compressOptions") { params.compressOptions = self.compressOptions(o) }
+    // Deliver SDK callbacks off the main thread; serialization happens there.
+    params.callbackQueue = self.callbackQueue
+    return params
+  }
+
   private func registerHandlers() {
     let id = Self.handlerId
     NCEngine.addConnectionStatusHandler(identifier: id, handler: forwarder)
@@ -571,21 +589,13 @@ public final class NexconnBridge: NSObject {
         self.registerHandlers()
         return c.resolve(["alreadyInitialized": true, "platform": "ios", "sdkVersion": NCEngine.getVersion()])
       }
-      let params = InitParams(appKey: appKey)
-      if let raw = a.int("areaCode") { params.areaCode = try enumValue(AreaCode.self, raw, "areaCode") }
-      if let navi = a.str("naviServer") { params.naviServer = navi }
-      if let raw = a.int("logLevel") { params.logLevel = try enumValue(LogLevel.self, raw, "logLevel") }
-      if let v = a.bool("enableSyncEmptyTopConversation") { params.enableSyncEmptyTopConversation = v }
-      if let v = a.bool("forceKeepAlive") { params.forceKeepAlive = v }
-      if let v = a.bool("crashMonitorEnabled") { params.crashMonitorEnabled = v }
-      if let o = a.dict("compressOptions") { params.compressOptions = self.compressOptions(o) }
-      // Deliver SDK callbacks off the main thread; serialization happens there.
-      params.callbackQueue = self.callbackQueue
+      let params = try self.makeInitParams(a)
       NCEngine.initialize(params)
       // Handlers are registered before any connect so offline messages are not missed.
       self.registerHandlers()
       self.stateLock.lock()
       self.initializedAppKey = appKey
+      self.initArgs = a
       self.stateLock.unlock()
       c.resolve(["alreadyInitialized": false, "platform": "ios", "sdkVersion": NCEngine.getVersion()])
     }
@@ -602,8 +612,19 @@ public final class NexconnBridge: NSObject {
       self.connecting = true
       self.generation += 1
       let gen = self.generation
+      let refreshArgs = self.engineNeedsRefresh ? self.initArgs : nil
+      self.engineNeedsRefresh = false
       self.stateLock.unlock()
       self.resetSession()
+      if let refreshArgs = refreshArgs, let refreshParams = try? self.makeInitParams(refreshArgs) {
+        // Account switch in the same process: after disconnect + connect the
+        // SDK stopped delivering MessageHandler.onMessageDeleted for recalls
+        // (cloud session 2, iOS F5). Re-initializing rebinds the SDK's
+        // low-level listeners to a fresh engine, as on a cold start.
+        NSLog("NexconnBridge re-initializing SDK before connect gen=%ld", gen)
+        NCEngine.initialize(refreshParams)
+        self.registerHandlers()
+      }
       let params = ConnectParams(token: token)
       if let t = a.int("timeout") { params.timeout = Int32(t) }
       if let v = a.bool("reconnectKickEnable") { params.reconnectKickEnable = v }
@@ -625,6 +646,7 @@ public final class NexconnBridge: NSObject {
       self.stateLock.lock()
       self.generation += 1
       let gen = self.generation
+      self.engineNeedsRefresh = true
       self.stateLock.unlock()
       self.resetSession()
       NCEngine.disconnect(disablePush: a.bool("disablePush") ?? false)

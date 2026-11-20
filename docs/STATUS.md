@@ -141,6 +141,17 @@ Branch `fix/session-restore-recall-release`; test plan in
   emulator without Metro. Release image and cold restart were not repeated
   on this revision.
 
+- macOS run at `eb3cb59` (see STATUS_SESSION_2.md):
+  - iOS CLI, Expo Debug and Release builds and packed consumers pass.
+  - Android ↔ iOS chat passes except X4 (PNG download stall), X6 (sender
+    edit refresh) and X10 (location 31610).
+  - iOS recipient recall failed after an account switch in the same
+    process.
+
+  The fix is not yet verified natively: the iOS bridge re-initializes the
+  SDK before a connect that follows a disconnect. Static trace and retest
+  rows T9–T12 are in [cloud session 2](CLOUD_SESSION_2.md).
+
 ## Pending verification (cloud VMs / devices)
 
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
