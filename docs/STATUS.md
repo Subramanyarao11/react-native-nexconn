@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated 18 November 2026.
+Last updated 20 November 2026.
 
 ## Summary
 
@@ -9,11 +9,11 @@ pinned Nexconn native SDKs** (Android `ai.nexconn.chat:chat:26.4.2`, iOS
 `NexconnChat/Chat 26.4.2`): 151 bridge methods, 18 paged query kinds and 62
 SDK event types, with 8 documented platform-only gaps (docs/PARITY.md).
 
-The Android bridge has compiled against the pinned SDK in both workspace
-fixtures. The example token server passed its live Nexconn API test, but the
-mobile SDK has not been run on a simulator/device or connected to Nexconn.
-The Swift bridge has not been compiled. See
-[the cloud runbook](CLOUD_TEST_RUNBOOK.md) for the verification steps.
+Both native bridges have connected to Nexconn from the CLI fixtures on
+Android emulators and an iOS simulator. The Android CLI and Expo fixtures
+also build with R8. See [the session 2 results](STATUS_SESSION_2.md) for the
+tested revisions, runtime checks, and limits, and the
+[cloud runbook](CLOUD_TEST_RUNBOOK.md) for how to repeat them.
 
 ## Route decision
 
@@ -96,7 +96,7 @@ The consumer npm installs reported advisories before and after tarball
 installation: CLI 67 → 68 high; Expo 25 → 26 high, 2 moderate throughout.
 These are build and typecheck results, not a dependency security audit.
 
-## Changes after iOS session 1 (not yet verified natively)
+## Changes and verification after iOS session 1
 
 Branch `fix/session-restore-recall-release`; test plan in
 [cloud session 2](CLOUD_SESSION_2.md).
@@ -110,10 +110,10 @@ Branch `fix/session-restore-recall-release`; test plan in
 - `verify-packed-consumers.sh` builds before packing; new `expo-release`
   targets in `verify-android.sh` / `verify-ios.sh`.
 - JS checks on the dev Mac: 53/53 tests, typecheck, lint (0 errors), build.
-- Ubuntu run at `dce119b` found four problems: the R8 release crash and
-  `MessageNotRegistered` 34021, recall not rendering, and two wrong verifier
-  checks. `5ce885f` fixed them: the consumer rules keep the whole SDK,
-  `getById` bypasses the cache, and `recall()` uses a fresh lookup.
+- The Ubuntu run at `dce119b` exposed release sign-in and message
+  registration failures, a live recall issue, and two incorrect verifier
+  checks. `5ce885f` broadened the R8 keep rules, corrected the verifiers, and
+  switched recall reconciliation to a fresh SDK lookup.
 - Ubuntu retest at `5ce885f` passed:
   - the Expo R8 release build and its runtime (sign-in, text, PNG, history,
     cold re-sign-in);
@@ -121,29 +121,29 @@ Branch `fix/session-restore-recall-release`; test plan in
   - 16 KB runtime on API 35;
   - the sender side of recall.
 
-  The recipient side of recall still fails: no recall event reached JS while
-  the chat was open.
-- Follow-up, not yet verified natively:
-  - native per-event tracing (`NexconnBridge` log tag on both platforms);
-  - `useMessages().refresh()`, which reconciles the open chat against the
-    SDK's newest page, plus a Refresh button in the demo.
-
-  Retest rows T5–T8 are in [cloud session 2](CLOUD_SESSION_2.md). The dev Mac
-  passes 55/55 JS tests.
+  In that run, the recipient's open chat stayed stale and received no JS
+  recall event.
+- At `eb3cb59`, Ubuntu passed all 55 JS tests, Codegen and pack, and both
+  Android fixtures' debug and R8 builds. The live recall failure did not
+  recur: Android → Android, Android → iOS, and iOS → Android each delivered
+  a native callback and a JS delete event and removed the original text
+  while the recipient stayed in the chat. Recall before opening the
+  Android chat also passed. Refresh was exercised, but stale-message
+  catch-up remains unverified because the live callback removed the text
+  first.
+- The paired CLI checks passed two-way text, typing, custom messages, group
+  chat, iOS-to-Android edit delivery, and offline delivery to iOS. The
+  receipt reached the SDK and JS but the demo label lagged. Android did not
+  complete the incoming PNG download, and location sends failed on both
+  platforms (`31610`). The `eb3cb59` Expo R8 APK built, but the usage limit
+  blocked its authenticated runtime smoke test.
 
 ## Pending verification (cloud VMs / devices)
 
-Plan (18–19 November 2026): the iOS run (`verify-ios.sh`) is in progress on
-the macOS VM; the two-user live checklist and the Expo release builds are
-scheduled for the next cloud session — see "Next cloud session" in
-[the cloud runbook](CLOUD_TEST_RUNBOOK.md).
-
-- First native compile of the Swift bridge and `Nexconn-Swift.h` import (CLI + Expo) — running.
-- Expo release builds (Android `assembleRelease`, iOS Release) and iOS prebuild with the plugin.
-- All live scenarios L1–L16 in docs/CLOUD_TEST_RUNBOOK.md, including
-  cross-platform and official-client interop, offline sync, account switch,
-  JS reload, custom messages and physical-device push.
-- Android launch on a 16 KB page-size device or emulator.
+The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
+in this run from previous revisions. They do not establish full
+L1–L16 device coverage, official-client interoperability, or physical-device
+push; FCM and physical push were out of scope.
 
 ## Known limits and assumptions
 
