@@ -19,9 +19,8 @@ avoids the VM's global JVM options reported as a CMake failure on the prior run.
 | B3 — Expo debug | Pass: debug APK built; non-clean prebuild left the checked Gradle and manifest files unchanged. |
 | B4 — Expo R8 | Pass: release APK built, all six SDK classes kept their names, and DEX retained runtime `@MessageTag(RC:TxtMsg)`. |
 
-B8 (fresh packed Android consumers) and runtime 16 KB sign-in/send/receive
-passed on `5ce885f`; they were not part of the targeted rebuild on this
-revision. FCM and physical push were excluded.
+B8 (fresh packed Android consumers) passed on `5ce885f` and was not rerun
+on this revision. FCM and physical push were excluded.
 
 ## Android live checks
 
@@ -33,13 +32,18 @@ revision. FCM and physical push were excluded.
 
 ## Expo R8 release runtime
 
-The APK built at `eb3cb59` was installed on the 16 KB emulator
-(SHA-256 `d9150ef87863640b8127db39b7446d72c1c8e146683b0107857283880914b3fe`).
+After the initial test-agent quota interruption, the November 20 retry
+passed on the exact `eb3cb59` APK (SHA-256
+`d9150ef87863640b8127db39b7446d72c1c8e146683b0107857283880914b3fe`).
+The API 35 emulator reported `PAGE_SIZE=16384`. Metro was stopped before the
+Expo release launched and stayed off; the already-loaded CLI fixture on
+the other emulator served as the peer. The release signed in via trusted
+loopback HTTPS without changing the APK.
 
 | Case | Result |
 | --- | --- |
-| R1 — HTTPS sign-in, capabilities and app settings | **Blocked.** The UI testing agent hit its usage limit before testing and remained unavailable on retry. |
-| R2 — Two-way text and decoded history | **Not run.** The same quota prevented the authenticated release check. The prior `5ce885f` runtime pass does not count for this APK. |
+| R1 — HTTPS sign-in, capabilities and app settings | **Pass.** The release reached Chats, returned SDK version 26.4.2 in Capabilities, and returned real App settings fields, including GIF size limit (2,097,152 bytes) and maximum video duration (120 seconds). |
+| R2 — Two-way text and decoded history (quick regression) | **Pass.** CLI and Expo R8 each received the other's text once. After reopening both chats, both original texts decoded correctly and appeared once, with no `[unknown]` placeholder. Release image delivery and R5 cold restart were not repeated on this revision. |
 
 ## Cross-platform checks
 
@@ -62,6 +66,7 @@ cases pair the Ubuntu and Mac CLI debug builds at `eb3cb59`.
 | X10 — Location | **Fail both ways.** Android failed with and without a valid PNG thumbnail; iOS failed with a thumbnail. All failed with `category=native`, `nativeCode=31610` (`JsonParserFailed` on Android), `method=message.send`. No location was delivered. |
 | X10 — Voice and video | **Pass Android → iOS (delivery).** Both uploads reached 100%; iOS received each once with the right content type and one-second duration. Video size matched (1,881 bytes); normalized voice had no size field. This does not cover reverse delivery or playback. |
 
-Android test clients were stopped so Alice and Carol could be used for the
-separate iOS run. This report does not include same-platform iOS release or
-official-client interoperability checks.
+After the release retry, both Android clients signed out and were stopped
+before Alice and Carol were returned to the iOS session. Temporary servers,
+ADB mappings, CA trust, and keys were removed. This report does not include
+same-platform iOS release or official-client interoperability checks.

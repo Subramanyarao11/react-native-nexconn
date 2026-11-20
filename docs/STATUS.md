@@ -135,8 +135,11 @@ Branch `fix/session-restore-recall-release`; test plan in
   chat, iOS-to-Android edit delivery, and offline delivery to iOS. The
   receipt reached the SDK and JS but the demo label lagged. Android did not
   complete the incoming PNG download, and location sends failed on both
-  platforms (`31610`). The `eb3cb59` Expo R8 APK built, but the usage limit
-  blocked its authenticated runtime smoke test.
+  platforms (`31610`).
+- The `eb3cb59` Expo R8 APK passed HTTPS sign-in, capabilities and settings,
+  two-way text with a CLI peer, and decoded history on the 16 KB Android
+  emulator without Metro. Release image and cold restart were not repeated
+  on this revision.
 
 ## Pending verification (cloud VMs / devices)
 
