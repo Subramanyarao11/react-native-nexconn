@@ -284,6 +284,74 @@ internal object NexconnBridge {
   }
 
   private val LOG_TAG = "NexconnBridge"
+  private const val IMAGE_DOWNLOAD_WATCHDOG_MS = 20_000L
+  private val mainHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+  private val downloadExecutor by lazy { java.util.concurrent.Executors.newFixedThreadPool(2) }
+  /** url -> cancel flag for downloads started by [downloadUrl]. */
+  private val urlDownloads = ConcurrentHashMap<String, AtomicBoolean>()
+
+  private fun fileNameOf(url: String, fallback: String): String =
+    android.net.Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() } ?: fallback
+
+  /**
+   * Downloads [url] into `<cache>/nexconn-media/<safe fileName>` off the main
+   * thread, emitting `op.progress` (0–100) for [opId]. Calls [done] once with
+   * the absolute path, or with an error message.
+   */
+  private fun downloadUrl(url: String, fileName: String, opId: String?, done: (String?, String?) -> Unit) {
+    val ctx = appContext ?: return done(null, "No Android context")
+    val cancel = AtomicBoolean(false)
+    urlDownloads[url] = cancel
+    downloadExecutor.execute {
+      val dir = File(ctx.cacheDir, "nexconn-media").apply { mkdirs() }
+      val safe = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifEmpty { "download" }
+      val target = File(dir, safe)
+      val partial = File(dir, "$safe.part")
+      var connection: java.net.HttpURLConnection? = null
+      try {
+        connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+          connectTimeout = 15_000
+          readTimeout = 30_000
+          instanceFollowRedirects = true
+        }
+        val status = connection.responseCode
+        if (status !in 200..299) return@execute done(null, "HTTP $status")
+        val total = connection.contentLengthLong
+        var read = 0L
+        var lastPercent = -1
+        connection.inputStream.use { input ->
+          partial.outputStream().use { output ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+              if (cancel.get()) return@execute done(null, "canceled")
+              val n = input.read(buffer)
+              if (n < 0) break
+              output.write(buffer, 0, n)
+              read += n
+              if (total > 0) {
+                val percent = ((read * 100) / total).toInt()
+                if (percent != lastPercent) {
+                  lastPercent = percent
+                  emitOp(opId, "op.progress", mapOf("progress" to percent))
+                }
+              }
+            }
+          }
+        }
+        if (!partial.renameTo(target)) {
+          partial.copyTo(target, overwrite = true)
+          partial.delete()
+        }
+        done(target.absolutePath, null)
+      } catch (t: Throwable) {
+        partial.delete()
+        done(null, t.message ?: t.javaClass.simpleName)
+      } finally {
+        connection?.disconnect()
+        urlDownloads.remove(url, cancel)
+      }
+    }
+  }
 
   private fun emit(type: String, payload: Any?, opId: String?) {
     // Trace every SDK callback (type only, never payloads) so a missing JS
@@ -1034,26 +1102,64 @@ internal object NexconnBridge {
     on("message.downloadMedia") { a, c ->
       val opId = a.str("opId")
       withMessage(a.reqObj("message"), c) { m ->
+        // Images are downloaded by the SDK's native core (other media types use
+        // its HTTP path). On Android that core download of an iOS-sent PNG was
+        // seen to never report progress or completion (cloud session 2, X4).
+        // If nothing is reported for IMAGE_DOWNLOAD_WATCHDOG_MS, fetch the same
+        // remoteUrl directly into the app cache and resolve with that file.
+        val heard = AtomicBoolean(false)
+        val image = m.content as? ImageMessage
+        val remote = image?.remoteUrl?.trim()?.takeIf { it.startsWith("http") }
         m.downloadMedia(
           object : DownloadMediaMessageHandler {
             override fun onSuccess(message: Message) {
+              heard.set(true)
               remember(message)
               val path = (message.content as? MediaMessageContent)?.localPath
               c.resolve(mapOf("message" to message, "localPath" to path))
             }
 
             override fun onProgress(message: Message, progress: Int) {
+              heard.set(true)
               emitOp(opId, "op.progress", mapOf("progress" to progress))
             }
 
-            override fun onError(message: Message, error: NCError) = c.native(error, message)
+            override fun onError(message: Message, error: NCError) {
+              heard.set(true)
+              c.native(error, message)
+            }
 
             override fun onCanceled(message: Message) {
+              heard.set(true)
               c.reject(BridgeException("canceled", "Media download was canceled", null, message))
             }
           },
         )
+        if (remote != null) {
+          mainHandler.postDelayed({
+            if (heard.get()) return@postDelayed
+            android.util.Log.w(LOG_TAG, "image download: no SDK callback after ${IMAGE_DOWNLOAD_WATCHDOG_MS}ms, fetching remoteUrl")
+            downloadUrl(remote, "nexconn-${m.clientId}-${fileNameOf(remote, "image.jpg")}", opId) { path, error ->
+              if (path != null) {
+                c.resolve(mapOf("message" to m, "localPath" to path, "fallback" to true))
+              } else {
+                c.reject(BridgeException("network", error ?: "Image download failed"))
+              }
+            }
+          }, IMAGE_DOWNLOAD_WATCHDOG_MS)
+        }
       }
+    }
+    on("message.downloadMediaUrl") { a, c ->
+      val url = a.reqStr("url")
+      if (!url.startsWith("https://") && !url.startsWith("http://")) throw invalidArg("url must be http(s)")
+      downloadUrl(url, a.reqStr("fileName"), a.str("opId")) { path, error ->
+        if (path != null) c.resolve(path) else c.reject(BridgeException("network", error ?: "Download failed"))
+      }
+    }
+    on("message.cancelDownloadMediaUrl") { a, c ->
+      urlDownloads.remove(a.reqStr("url"))?.set(true)
+      c.resolve(null)
     }
     on("message.pauseDownload") { a, c ->
       withMessage(a.reqObj("message"), c) { m -> m.pauseDownloadingMedia(errorHandler(c)) }

@@ -24,6 +24,7 @@ import type {
   NexconnEventMap,
   NexconnEventName,
   OutgoingContent,
+  SendMediaCallbacks,
   SendOptions,
   TypingStatus,
 } from '../core/types.ts';
@@ -216,7 +217,15 @@ export interface UseMessagesResult extends AsyncState {
   /** Loads older history. */
   loadOlder: () => Promise<void>;
   /** Sends content, picking `send` or `sendMedia` automatically. */
-  send: (content: OutgoingContent, options?: SendOptions) => Promise<Message>;
+  send: (
+    content: OutgoingContent,
+    options?: SendOptions & Pick<SendMediaCallbacks, 'onProgress'>
+  ) => Promise<Message>;
+  /**
+   * Edits a sent message and shows the SDK's updated copy in this list
+   * immediately (the SDK does not always notify the editing client).
+   */
+  edit: (message: Message, content: OutgoingContent) => Promise<Message>;
   /**
    * Recalls a message for everyone. The recall notification returned by the
    * SDK (if any) replaces the original in the list immediately.
@@ -297,6 +306,29 @@ export function useMessages(
     const subs = [
       client.on('messageReceived', ({ message }) => upsert([message])),
       client.on('messagesUpdated', ({ messages: list }) => upsert(list)),
+      client.on('readReceiptResponse', ({ responses }) => {
+        // The SDK updates the stored message's read status; show its copy.
+        const store = storeRef.current;
+        const known = new Set(
+          store.messages.flatMap((m) => (m.messageId ? [m.messageId] : []))
+        );
+        const ids = responses
+          .filter((r) => !r.channel || sameChannel(r.channel, store.channel))
+          .map((r) => r.messageId)
+          .filter((id) => known.has(id));
+        if (ids.length === 0) return;
+        Promise.all(
+          ids.map((messageId) =>
+            client.messages.getById({ messageId }).catch(() => undefined)
+          )
+        )
+          .then((fresh) => {
+            if (storeRef.current !== store) return;
+            const found = fresh.filter((m): m is Message => m !== undefined);
+            if (store.upsert(found)) publish();
+          })
+          .catch(() => undefined);
+      }),
       client.on(
         'messageMetadataUpdated',
         ({ message }) => message && upsert([message])
@@ -325,7 +357,10 @@ export function useMessages(
   }, [client, channelId]);
 
   const send = useCallback(
-    async (content: OutgoingContent, sendOptions?: SendOptions) => {
+    async (
+      content: OutgoingContent,
+      sendOptions?: SendOptions & Pick<SendMediaCallbacks, 'onProgress'>
+    ) => {
       const target = channelRef.current;
       const generation = client.getSnapshot().generation;
       const onAttached = (message: Message) => {
@@ -398,7 +433,41 @@ export function useMessages(
     }
   }, [client, pageSize]);
 
-  return { messages, hasMore, loadOlder, send, recall, refresh, ...state };
+  const edit = useCallback(
+    async (message: Message, content: OutgoingContent) => {
+      const store = storeRef.current;
+      if (!message.messageId) {
+        throw new TypeError(
+          'Only sent messages (with a messageId) can be edited'
+        );
+      }
+      const updated = await client.messages.update(
+        channelRef.current,
+        message.messageId,
+        content
+      );
+      // Prefer the SDK's stored copy (carries hasChanged/updateInfo).
+      const fresh = await client.messages
+        .getById({ messageId: message.messageId })
+        .catch(() => undefined);
+      if (storeRef.current === store && store.upsert([fresh ?? updated])) {
+        publish();
+      }
+      return fresh ?? updated;
+    },
+    [client]
+  );
+
+  return {
+    messages,
+    hasMore,
+    loadOlder,
+    send,
+    edit,
+    recall,
+    refresh,
+    ...state,
+  };
 }
 
 /** Total unread count, refreshed on new messages and unread syncs. */

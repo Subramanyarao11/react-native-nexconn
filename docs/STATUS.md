@@ -7,7 +7,7 @@ Last updated 20 November 2026.
 The SDK is **implemented at source level for the full public surface of the
 pinned Nexconn native SDKs** (Android `ai.nexconn.chat:chat:26.4.2`, iOS
 `NexconnChat/Chat 26.4.2`): 151 bridge methods, 18 paged query kinds and 62
-SDK event types, with 8 documented platform-only gaps (docs/PARITY.md).
+SDK event types, with 6 documented platform-only gaps (docs/PARITY.md).
 
 Both native bridges have connected to Nexconn from the CLI fixtures on
 Android emulators and an iOS simulator. The Android CLI and Expo fixtures
@@ -160,6 +160,18 @@ L1–L16 device coverage, official-client interoperability, or physical-device
 push; FCM and physical push were out of scope.
 
 ## Known limits and assumptions
+
+- **Location messages (X10) fail in the vendor SDK on both platforms** with
+  31610 `JsonParserFailed`. The bridge passes valid latitude, longitude and
+  POI. The vendor encoders write the core's `type` (location type) field
+  themselves:
+  - iOS `MessageMappings.rsimContent` sets `locationType = "2"`.
+  - Android's converter never sets it, so `LocationMessage.encode` writes
+    `""`.
+
+  The core models `location_type` as an enum (`Unknown`/`Wgs84`/`Gcj02`/`Bd09`).
+  Neither SDK exposes the field, so it can't be corrected through the public
+  API. This needs a vendor fix; it was not reported (no vendor contact).
 
 - `ErrorHandler`/`OperationHandler` success is assumed to be `error == null`
   or `error.code == 0`.

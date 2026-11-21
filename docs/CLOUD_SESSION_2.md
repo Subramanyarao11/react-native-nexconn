@@ -118,12 +118,18 @@ Android is unchanged: its post-switch recall hasn't been tested (T11).
 | T11 | Android, same scenario as T9 (recipient switches on one emulator) | Same as T9, without the re-init line. If it fails like iOS did, report it and I'll add the same re-init on Android |
 | T12 | After T9, as Bob: F2 (3 messages), typing, X9 (offline delivery), F1 (JS reload) | Each event arrives once; no `-1` "lower-layer API not available" errors on connect |
 
-Separate follow-ups, not part of this fix:
-- Android download of an iOS PNG stalls (X4).
-- Location send fails with 31610 / `JsonParserFailed` on both platforms
-  (X10).
-- The Android receipt label lags (X3).
-- The iOS sender sees its own edit only after a refresh (X6, F6).
+### Follow-up fixes (X3, X4, X6, R4, X10)
+
+| # | Cause | Fix | Retest | Pass criteria |
+| --- | --- | --- | --- | --- |
+| R4 | The demo's **Send file** called `client.messages.sendMedia` directly, so the sender's list never got its own message | The demo now sends through `useMessages().send`, which takes `onProgress` | iOS Release: send an image | The sender's image bubble appears on attach and settles on upload, with no Refresh |
+| X6 | Edits went through `client.messages.update`, and the SDK doesn't notify the editing client | New `useMessages().edit(message, content)` updates the list from the SDK's stored copy. Demo: type the new text, then **long-press your own text message**. With an empty composer, long-press still recalls | iOS sender edits; Android receives | The sender immediately shows the new text and `· edited`; the recipient gets one `messagesUpdated` |
+| X3 | `useMessages` ignored `readReceiptResponse`, and the bubble label comes from the message's `sentStatus` | On a receipt for a message in the open chat, the hook fetches the SDK's stored copy and replaces the bubble | Android sends text, iOS opens the chat | The Android bubble changes from `sent` to `read` within a second of the receipt event, without reopening |
+| X4 | The Android SDK downloads images through its native core. Other media, such as files, use its Kotlin HTTP path, which worked. The core download of the iOS PNG never called back | `message.downloadMedia` on Android: if an image download reports nothing for 20 s, the bridge fetches the same `remoteUrl` into `<cacheDir>/nexconn-media` and resolves with `{localPath, fallback: true}`. Logged as `image download: no SDK callback`. `message.downloadMediaUrl` / `cancelDownloadMediaUrl` now work on Android too | Android downloads an iOS PNG; also an Android → Android PNG | Resolves with a `localPath`, and `shasum`/`sha1sum` of the file matches the source. Record whether `fallback: true` was needed |
+| X10 | Vendor SDK defect, see STATUS "Known limits": the location type is encoded by the SDK itself (`"2"` on iOS, `""` on Android) | None possible through the public API | Optional: retest once to confirm 31610 on both | Recorded as a vendor limitation; not a merge blocker |
+
+To compare bytes for X4: `adb shell sha1sum <localPath>` on Android, and
+`shasum <source.png>` on the Mac.
 
 ### 16 KB page size (runtime): passed at `5ce885f`
 

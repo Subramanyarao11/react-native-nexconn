@@ -363,6 +363,7 @@ function Chat({
     messages,
     loadOlder,
     send,
+    edit,
     recall: recallMessage,
     refresh,
     loading,
@@ -420,8 +421,8 @@ function Chat({
     if (!path) return;
     try {
       const isImage = /\.(jpe?g|png|heic|webp)$/i.test(path);
-      await client.messages.sendMedia(
-        channel,
+      // Through the hook so the sender's own bubble appears at once.
+      await send(
         isImage
           ? { type: 'image', localPath: path }
           : { type: 'file', localPath: path },
@@ -438,6 +439,20 @@ function Chat({
     try {
       await recallMessage(message);
       setStatus('Recalled');
+    } catch (e) {
+      setStatus(describeError(e));
+    }
+  };
+
+  // Long-press on an own message: edit it with the composer text if there is
+  // any, otherwise recall it.
+  const onLongPressMessage = async (message: Message) => {
+    const body = text.trim();
+    if (!body || message.content.type !== 'text') return recall(message);
+    try {
+      await edit(message, { type: 'text', text: body });
+      setText('');
+      setStatus('Edited');
     } catch (e) {
       setStatus(describeError(e));
     }
@@ -467,7 +482,7 @@ function Chat({
           <MessageBubble
             message={item}
             mine={item.senderUserId === userId}
-            onLongPress={() => recall(item)}
+            onLongPress={() => onLongPressMessage(item)}
           />
         )}
         onEndReached={loadOlder}

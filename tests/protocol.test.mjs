@@ -44,11 +44,7 @@ const ANDROID_ONLY = new Set([
   'engine.setPushContentShowStatus',
   'engine.getPushContentShowStatus',
 ]);
-const IOS_ONLY = new Set([
-  'engine.setDeviceToken',
-  'message.downloadMediaUrl',
-  'message.cancelDownloadMediaUrl',
-]);
+const IOS_ONLY = new Set(['engine.setDeviceToken']);
 
 test('the JS client calls a non-trivial bridge surface', () => {
   assert.ok(jsMethods.size > 140, `only ${jsMethods.size} methods found`);
