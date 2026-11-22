@@ -1,6 +1,8 @@
 name: Release
 # Publishes to npm when a GitHub release is published. Needs an NPM_TOKEN
-# secret (an npm automation token for the @subramanyarao11 scope).
+# secret (a granular npm token for @subramanyarao11/react-native-nexconn with
+# publish rights). Releases marked "pre-release" go to the `next` dist-tag;
+# all others go to `latest`. Already-published versions are skipped.
 on:
   release:
     types: [published]
@@ -24,8 +26,17 @@ jobs:
           test "${GITHUB_REF_NAME#v}" = "$version" || { echo "Tag $GITHUB_REF_NAME != $version"; exit 1; }
       - name: Publish
         run: |
+          name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
-          tag=latest; case "$version" in *-*) tag=beta;; esac
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm; nothing to publish."
+            exit 0
+          fi
+          # npm requires an explicit tag for prerelease versions. While the
+          # package is pre-1.0, a beta is the newest release, so it goes to
+          # `latest` unless the GitHub release is marked as a pre-release.
+          tag=latest
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then tag=next; fi
           npm publish --provenance --access public --tag "$tag"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
