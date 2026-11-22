@@ -1,4 +1,10 @@
-import type { Channel, ChannelIdentifier, Message } from '../core/types.ts';
+import type {
+  Channel,
+  ChannelIdentifier,
+  Message,
+  ReadReceiptInfo,
+} from '../core/types.ts';
+import { SentStatus } from '../core/enums.ts';
 
 export function sameChannel(
   a: ChannelIdentifier,
@@ -39,6 +45,47 @@ export class MessageListStore {
 
   get messages(): readonly Message[] {
     return this.items;
+  }
+
+  private receiptMap: ReadonlyMap<string, ReadReceiptInfo> = new Map();
+
+  /** Latest read-receipt counts per server `messageId` in this channel. */
+  get receipts(): ReadonlyMap<string, ReadReceiptInfo> {
+    return this.receiptMap;
+  }
+
+  /**
+   * Records genuine SDK read-receipt counts (from `readReceiptResponse` or
+   * `getReadReceiptInfo`) for messages in this channel. Counts never go
+   * backwards, so a late or reordered response cannot turn Read into Sent.
+   * Returns true if anything changed; the map is replaced, not mutated.
+   */
+  applyReceipts(infos: readonly ReadReceiptInfo[]): boolean {
+    let next: Map<string, ReadReceiptInfo> | undefined;
+    for (const info of infos) {
+      if (!info.messageId) continue;
+      if (info.channel && !sameChannel(info.channel, this.channel)) continue;
+      const current = (next ?? this.receiptMap).get(info.messageId);
+      if (
+        current &&
+        current.readCount >= info.readCount &&
+        current.totalCount === info.totalCount
+      ) {
+        continue;
+      }
+      const merged: ReadReceiptInfo = current
+        ? {
+            ...info,
+            readCount: Math.max(current.readCount, info.readCount),
+            unreadCount: Math.min(current.unreadCount, info.unreadCount),
+          }
+        : info;
+      next ??= new Map(this.receiptMap);
+      next.set(info.messageId, merged);
+    }
+    if (!next) return false;
+    this.receiptMap = next;
+    return true;
   }
 
   /** Inserts or replaces messages; returns true if anything changed. */
@@ -194,4 +241,32 @@ export async function currentRecallNotice(
   } catch {
     return undefined; // not retrievable any more: a plain deletion
   }
+}
+
+export interface MessageReadState {
+  /** Read by at least one recipient (direct: the peer has read it). */
+  readonly read: boolean;
+  /** Recipients who read it, when the SDK reported receipt counts. */
+  readonly readCount?: number;
+  /** Recipients expected to read it (group size minus sender). */
+  readonly totalCount?: number;
+}
+
+/**
+ * Read state of an outgoing message from the SDK's `sentStatus` and the
+ * receipt counts the SDK reported. Never invents a read: without a receipt
+ * or `sentStatus === read` it reports unread.
+ */
+export function readStateOf(
+  message: Message,
+  receipt: ReadReceiptInfo | undefined
+): MessageReadState {
+  if (receipt) {
+    return {
+      read: receipt.readCount > 0 || message.sentStatus === SentStatus.read,
+      readCount: receipt.readCount,
+      totalCount: receipt.totalCount,
+    };
+  }
+  return { read: message.sentStatus === SentStatus.read };
 }

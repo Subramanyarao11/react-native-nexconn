@@ -15,7 +15,11 @@ import {
   type ReactNode,
 } from 'react';
 import type { ClientSnapshot, NexconnClient } from '../core/client.ts';
-import { ConnectionStatus, type ChannelType } from '../core/enums.ts';
+import {
+  ConnectionStatus,
+  MessageDirection,
+  type ChannelType,
+} from '../core/enums.ts';
 import type {
   Channel,
   ChannelIdentifier,
@@ -24,6 +28,7 @@ import type {
   NexconnEventMap,
   NexconnEventName,
   OutgoingContent,
+  ReadReceiptInfo,
   SendMediaCallbacks,
   SendOptions,
   TypingStatus,
@@ -35,7 +40,9 @@ import {
   MessageListStore,
   reconcileDeleted,
   currentRecallNotice,
+  readStateOf,
   sameChannel,
+  type MessageReadState,
 } from './stores.ts';
 
 export {
@@ -213,6 +220,15 @@ export function useChannelList(
 
 export interface UseMessagesResult extends AsyncState {
   messages: readonly Message[];
+  /**
+   * Read-receipt counts per `messageId`, from the SDK's receipt events and
+   * `getReadReceiptInfo`. The Android SDK reports receipts without updating
+   * the stored message's `sentStatus`, so render read state with
+   * `readState(message)` rather than `sentStatus` alone.
+   */
+  receipts: ReadonlyMap<string, ReadReceiptInfo>;
+  /** Read state of an outgoing message (`sentStatus` + receipt counts). */
+  readState: (message: Message) => MessageReadState;
   hasMore: boolean;
   /** Loads older history. */
   loadOlder: () => Promise<void>;
@@ -256,6 +272,9 @@ export function useMessages(
   const storeRef = useRef(new MessageListStore(channel));
   const queryRef = useRef<PagedQuery<Message> | undefined>(undefined);
   const [messages, setMessages] = useState<readonly Message[]>([]);
+  const [receipts, setReceipts] = useState<
+    ReadonlyMap<string, ReadReceiptInfo>
+  >(() => new Map());
   const [state, setState] = useState<AsyncState>({
     loading: false,
     error: undefined,
@@ -264,7 +283,39 @@ export function useMessages(
   const connected = snapshot.connectionStatus === ConnectionStatus.connected;
   const pageSize = options.pageSize ?? 30;
 
-  const publish = () => setMessages(storeRef.current.messages);
+  const publish = () => {
+    setMessages(storeRef.current.messages);
+    setReceipts(storeRef.current.receipts);
+  };
+
+  /**
+   * Seeds receipt counts for outgoing messages that asked for receipts, so a
+   * reopened chat shows Read even where the SDK keeps `sentStatus` at Sent.
+   * Best effort: a failure leaves the SDK's `sentStatus` as the only source.
+   */
+  const seedReceipts = useCallback(
+    (store: MessageListStore, page: readonly Message[]) => {
+      const ids = page
+        .filter(
+          (m) =>
+            m.direction === MessageDirection.send &&
+            m.needReceipt &&
+            m.messageId &&
+            !store.receipts.has(m.messageId)
+        )
+        .map((m) => m.messageId as string);
+      if (ids.length === 0) return;
+      client.messages
+        .getReadReceiptInfo(store.channel, ids)
+        .then((infos) => {
+          if (storeRef.current === store && store.applyReceipts(infos)) {
+            publish();
+          }
+        })
+        .catch(() => undefined);
+    },
+    [client]
+  );
 
   const loadOlder = useCallback(async () => {
     const query = queryRef.current;
@@ -274,16 +325,18 @@ export function useMessages(
       const page = await query.loadNextPage();
       if (queryRef.current !== query) return;
       if (storeRef.current.upsert(page.items)) publish();
+      seedReceipts(storeRef.current, page.items);
       setHasMore(query.hasMore);
       setState({ loading: false, error: undefined });
     } catch (error) {
       if (queryRef.current === query) setState({ loading: false, error });
     }
-  }, []);
+  }, [seedReceipts]);
 
   useEffect(() => {
     storeRef.current = new MessageListStore(channelRef.current);
     setMessages([]);
+    setReceipts(storeRef.current.receipts);
     setHasMore(true);
     if (!connected) return undefined;
     const query = client.messages.createMessagesQuery({
@@ -307,8 +360,11 @@ export function useMessages(
       client.on('messageReceived', ({ message }) => upsert([message])),
       client.on('messagesUpdated', ({ messages: list }) => upsert(list)),
       client.on('readReceiptResponse', ({ responses }) => {
-        // The SDK updates the stored message's read status; show its copy.
         const store = storeRef.current;
+        // Apply the SDK's receipt counts at once: on Android the stored
+        // message keeps sentStatus=Sent after a receipt.
+        if (store.applyReceipts(responses)) publish();
+        // Also adopt the stored copy in case the SDK did update it.
         const known = new Set(
           store.messages.flatMap((m) => (m.messageId ? [m.messageId] : []))
         );
@@ -426,12 +482,13 @@ export function useMessages(
       if (storeRef.current === store && store.reconcileWindow(page.items)) {
         publish();
       }
+      if (storeRef.current === store) seedReceipts(store, page.items);
     } catch (error) {
       if (storeRef.current === store) setState({ loading: false, error });
     } finally {
       query.release().catch(() => undefined);
     }
-  }, [client, pageSize]);
+  }, [client, pageSize, seedReceipts]);
 
   const edit = useCallback(
     async (message: Message, content: OutgoingContent) => {
@@ -458,8 +515,19 @@ export function useMessages(
     [client]
   );
 
+  const readState = useCallback(
+    (message: Message) =>
+      readStateOf(
+        message,
+        message.messageId ? receipts.get(message.messageId) : undefined
+      ),
+    [receipts]
+  );
+
   return {
     messages,
+    receipts,
+    readState,
     hasMore,
     loadOlder,
     send,

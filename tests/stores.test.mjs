@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeChannel, normalizeMessage } from '../src/core/normalize.ts';
-import { ChannelListStore, MessageListStore } from '../src/react/stores.ts';
+import { ChannelListStore, MessageListStore, readStateOf } from '../src/react/stores.ts';
 import { fixtures } from '../src/testing/index.ts';
 
 const bob = { channelType: 1, channelId: 'bob' };
@@ -132,4 +132,34 @@ test('reconcileWindow applies SDK truth inside the fetched window only', () => {
     ['OLD:text', 'R:recallNotification', '-:text', 'NEW:text']
   );
   assert.equal(store.reconcileWindow([]), false);
+});
+
+test('receipts mark a Sent message read without touching sentStatus, and never go backwards', () => {
+  const direct = { channelType: 1, channelId: 'bob' };
+  const store = new MessageListStore(direct);
+  const sent = { ...normalizeMessage(fixtures.textMessage({ clientId: 1, messageId: 'M1', sentStatus: 30, direction: 1, needReceipt: true })), channel: direct };
+  store.upsert([sent]);
+  assert.equal(readStateOf(sent, store.receipts.get('M1')).read, false);
+  // Receipt for another channel is ignored.
+  assert.equal(store.applyReceipts([{ channel: { channelType: 1, channelId: 'carol' }, messageId: 'M1', readCount: 1, unreadCount: 0, totalCount: 1 }]), false);
+  assert.equal(store.applyReceipts([{ channel: direct, messageId: 'M1', readCount: 1, unreadCount: 0, totalCount: 1 }]), true);
+  const before = store.receipts;
+  assert.deepEqual(readStateOf(sent, store.receipts.get('M1')), { read: true, readCount: 1, totalCount: 1 });
+  assert.equal(sent.sentStatus, 30);
+  // A stale response cannot undo it, and an identical one changes nothing.
+  assert.equal(store.applyReceipts([{ channel: direct, messageId: 'M1', readCount: 0, unreadCount: 1, totalCount: 1 }]), false);
+  assert.equal(store.receipts, before);
+});
+
+test('group receipts keep partial counts', () => {
+  const group = { channelType: 3, channelId: 'g1' };
+  const store = new MessageListStore(group);
+  const msg = { ...normalizeMessage(fixtures.textMessage({ clientId: 2, messageId: 'G1', sentStatus: 30, direction: 1 })), channel: group };
+  store.upsert([msg]);
+  store.applyReceipts([{ messageId: 'G1', readCount: 2, unreadCount: 3, totalCount: 5 }]);
+  assert.deepEqual(readStateOf(msg, store.receipts.get('G1')), { read: true, readCount: 2, totalCount: 5 });
+  store.applyReceipts([{ messageId: 'G1', readCount: 4, unreadCount: 1, totalCount: 5 }]);
+  assert.equal(store.receipts.get('G1').readCount, 4);
+  // No receipt: falls back to the SDK's sentStatus only.
+  assert.deepEqual(readStateOf({ ...msg, sentStatus: 50 }, undefined), { read: true });
 });
