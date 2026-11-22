@@ -1,0 +1,58 @@
+name: Demo APK
+# Builds the Expo example as an Android release APK and attaches it to a
+# GitHub release, so anyone can download and sideload it. The App Key and
+# token-server URL come from repository variables (Settings > Secrets and
+# variables > Actions > Variables): NEXCONN_APP_KEY and TOKEN_SERVER_URL.
+# The App Secret is never needed here; it stays on the token server.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the APK to
+        required: true
+        default: v0.1.0-beta.0
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPO_PUBLIC_NEXCONN_APP_KEY: ${{ vars.NEXCONN_APP_KEY }}
+      EXPO_PUBLIC_TOKEN_SERVER_URL: ${{ vars.TOKEN_SERVER_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Check configuration
+        run: |
+          [ -n "$EXPO_PUBLIC_NEXCONN_APP_KEY" ] || { echo "Set the NEXCONN_APP_KEY repository variable"; exit 1; }
+          case "$EXPO_PUBLIC_TOKEN_SERVER_URL" in
+            https://*) ;;
+            *) echo "Set TOKEN_SERVER_URL to an https:// URL (release builds block cleartext HTTP)"; exit 1;;
+          esac
+      - name: Build the release APK (R8, arm64-v8a and x86_64)
+        run: bash scripts/cloud/verify-android.sh expo-release
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          apk="$(ls example/android/app/build/outputs/apk/release/*.apk | head -1)"
+          out="nexconn-demo-${TAG}.apk"
+          cp "$apk" "$out"
+          sha256sum "$out" | tee "$out.sha256"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --prerelease=false \
+              --title "$TAG" \
+              --notes "Demo app: download \`$out\` below and install it on an Android 7+ phone or emulator (allow installs from unknown sources). Library: \`npm install @subramanyarao11/react-native-nexconn\`. Changes: see CHANGELOG.md."
+          fi
+          gh release upload "$TAG" "$out" "$out.sha256" --clobber
+          echo "Download: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${out}"
