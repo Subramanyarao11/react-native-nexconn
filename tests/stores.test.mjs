@@ -163,3 +163,42 @@ test('group receipts keep partial counts', () => {
   // No receipt: falls back to the SDK's sentStatus only.
   assert.deepEqual(readStateOf({ ...msg, sentStatus: 50 }, undefined), { read: true });
 });
+
+test('index stays correct across out-of-order inserts, re-sorting acks, trims and removals', () => {
+  const store = new MessageListStore(bob, 5);
+  store.upsert([msg({ clientId: 1, messageId: 'A', sentTime: 10 })]);
+  store.upsert([msg({ clientId: 3, messageId: 'C', sentTime: 30 })]);
+  store.upsert([msg({ clientId: 2, messageId: 'B', sentTime: 20 })]); // out of order
+  assert.deepEqual(store.messages.map((m) => m.messageId), ['A', 'B', 'C']);
+  // Local echo, then the ack moves it to an earlier server time.
+  store.upsert([msg({ clientId: 9, messageId: null, sentTime: 40 })]);
+  store.upsert([msg({ clientId: 9, messageId: 'S9', sentTime: 15 })]);
+  assert.deepEqual(store.messages.map((m) => m.clientId), [1, 9, 2, 3]);
+  // Replacements after the re-sort still hit the right row.
+  store.upsert([msg({ clientId: 2, messageId: 'B', sentTime: 20, hasChanged: true })]);
+  assert.equal(store.messages.length, 4);
+  assert.equal(store.messages.find((m) => m.clientId === 2).hasChanged, true);
+  // Overflow trims the oldest; their ids are forgotten, the rest still match.
+  store.upsert([10, 11].map((i) => msg({ clientId: i, messageId: `N${i}`, sentTime: 100 + i })));
+  assert.deepEqual(store.messages.map((m) => m.clientId), [9, 2, 3, 10, 11]);
+  store.upsert([msg({ clientId: 1, messageId: 'A', sentTime: 10 })]); // trimmed id: re-added, then trimmed again
+  assert.deepEqual(store.messages.map((m) => m.clientId), [9, 2, 3, 10, 11]);
+  store.upsert([msg({ clientId: 11, messageId: 'N11', sentTime: 111, hasChanged: true })]);
+  assert.equal(store.messages.length, 5);
+  assert.equal(store.messages.at(-1).hasChanged, true);
+  // After a removal the index is rebuilt.
+  store.remove([{ messageId: 'C' }]);
+  store.upsert([msg({ clientId: 10, messageId: 'N10', sentTime: 110, hasChanged: true })]);
+  assert.deepEqual(store.messages.map((m) => m.clientId), [9, 2, 10, 11]);
+  assert.equal(store.messages[2].hasChanged, true);
+  // Echo and ack in one batch collapse to one row.
+  store.upsert([
+    msg({ clientId: 20, messageId: null, sentTime: 200 }),
+    msg({ clientId: 20, messageId: 'S20', sentTime: 201 }),
+  ]);
+  assert.equal(store.messages.filter((m) => m.clientId === 20).length, 1);
+  store.reset();
+  assert.equal(store.messages.length, 0);
+  assert.equal(store.upsert([msg({ clientId: 2, messageId: 'B', sentTime: 20 })]), true);
+  assert.equal(store.messages.length, 1);
+});

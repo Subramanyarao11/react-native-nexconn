@@ -16,6 +16,12 @@ $YARN install --immutable
 echo "== Unit, contract and plugin tests"
 $YARN test
 
+echo "== Rendered hook tests (Jest + React Native Testing Library)"
+$YARN test:react
+
+echo "== JS performance and leak checks (mock transport)"
+$YARN bench
+
 echo "== TypeScript"
 $YARN typecheck
 

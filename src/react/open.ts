@@ -90,12 +90,17 @@ export function useOpenChannel(
     await client.openChannels.exit(channelId, optionsRef.current.extra);
   }, [client, channelId]);
 
+  // Per session and channel: listen, and exit on unmount or change. A
+  // network drop does not exit; the SDK rejoins and reports it via events.
+  const attemptedRef = useRef<string | undefined>(undefined);
+  const enterKey = `${key}|${channelId}`;
   useEffect(() => {
     setStatus('idle');
     setInfo(undefined);
     setParticipantCount(undefined);
     setError(undefined);
-    if (!connected || !channelId) return undefined;
+    attemptedRef.current = undefined;
+    if (!channelId) return undefined;
     const subs = [
       client.on('openChannelEntered', (event) => {
         if (event.channelId !== channelId) return;
@@ -137,7 +142,6 @@ export function useOpenChannel(
         setStatus('destroyed');
       }),
     ];
-    if (autoEnter) detach(enter());
     return () => {
       subs.forEach((unsubscribe) => unsubscribe());
       tokenRef.current += 1;
@@ -148,7 +152,15 @@ export function useOpenChannel(
           .catch(() => undefined);
       }
     };
-  }, [client, key, channelId, connected, autoEnter, enter]);
+  }, [client, enterKey, channelId]);
+
+  // Enter once per session and channel, as soon as the SDK is connected.
+  useEffect(() => {
+    if (!autoEnter || !connected || !channelId) return;
+    if (attemptedRef.current === enterKey) return;
+    attemptedRef.current = enterKey;
+    detach(enter());
+  }, [enterKey, channelId, connected, autoEnter, enter]);
 
   return { status, info, participantCount, error, enter, exit };
 }
@@ -201,13 +213,13 @@ export function useCommunitySubChannels(
     }
   }, [client, channelId]);
 
+  // New session or channel: clear and follow community events.
   useEffect(() => {
     tokenRef.current += 1;
     setSubChannels([]);
     setUnread(new Map());
     setState(IDLE);
-    if (!connected || !channelId) return undefined;
-    detach(refresh());
+    if (!channelId) return undefined;
     const mine = (
       list: readonly { channel?: { channelId: string } }[]
     ): boolean => list.some((i) => i.channel?.channelId === channelId);
@@ -224,7 +236,12 @@ export function useCommunitySubChannels(
       }),
     ];
     return () => subs.forEach((unsubscribe) => unsubscribe());
-  }, [client, key, channelId, connected, refresh]);
+  }, [client, key, channelId, refresh]);
+
+  // Load when connected, and revalidate after a reconnect.
+  useEffect(() => {
+    if (connected && channelId) detach(refresh());
+  }, [key, channelId, connected, refresh]);
 
   return { subChannels, unread, refresh, ...state };
 }

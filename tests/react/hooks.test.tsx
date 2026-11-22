@@ -405,3 +405,50 @@ describe('open and community channels', () => {
     expect(result.current.unread.get('s1')?.unreadCount).toBe(3);
   });
 });
+
+describe('network drops keep hook data', () => {
+  test('useOpenChannel neither exits nor re-enters on a network drop', async () => {
+    const h = setup();
+    h.transport.on('open.enter', () => null);
+    h.transport.on('open.exit', () => null);
+    const view = await renderHook(() => useOpenChannel('room'), {
+      wrapper: h.wrapper,
+    });
+    await h.connect();
+    await flush();
+    await h.disconnected();
+    await h.reconnected();
+    await flush();
+    expect(calls(h.transport, 'open.enter')).toHaveLength(1);
+    expect(calls(h.transport, 'open.exit')).toHaveLength(0);
+    await view.unmount();
+    expect(calls(h.transport, 'open.exit')).toHaveLength(1);
+  });
+
+  test('useFriends and useDraft keep their state through a drop and revalidate', async () => {
+    const h = setup();
+    h.transport.on('user.getFriends', () => [
+      { __type: 'FriendInfo', userId: 'bob', name: 'Bob' },
+    ]);
+    h.transport.on('channel.getChannels', () => [
+      fixtures.directChannel({ draft: 'kept' }),
+    ]);
+    const { result } = await renderHook(
+      () => ({ friends: useFriends(), draft: useDraft(bob) }),
+      { wrapper: h.wrapper }
+    );
+    await h.connect();
+    await flush();
+    expect(result.current.friends.friends).toHaveLength(1);
+    expect(result.current.draft.draft).toBe('kept');
+    await h.disconnected();
+    expect(result.current.friends.friends).toHaveLength(1);
+    expect(result.current.draft.draft).toBe('kept');
+    await h.reconnected();
+    await flush();
+    expect(calls(h.transport, 'user.getFriends')).toHaveLength(2);
+    // The draft is read once per session and channel, not per reconnect.
+    expect(calls(h.transport, 'channel.getChannels')).toHaveLength(1);
+    expect(result.current.draft.draft).toBe('kept');
+  });
+});

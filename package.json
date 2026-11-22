@@ -58,7 +58,8 @@
     "test:live": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/live/*.live.test.mjs",
     "build": "bob build",
     "check": "yarn test && yarn test:react && yarn typecheck && yarn lint && yarn build",
-    "test:react": "jest"
+    "test:react": "jest",
+    "bench": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning scripts/bench-events.mjs"
   },
   "keywords": [
     "react-native",

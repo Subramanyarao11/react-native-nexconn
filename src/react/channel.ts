@@ -59,25 +59,34 @@ export function useDraft(
       : client.channels.saveDraft(pending.channel, pending.text));
   }, [client]);
 
+  // New session or channel: start over, saving pending text to where it
+  // was typed. A network drop alone keeps the text.
+  const loadKey = `${key}|${id}`;
+  const loadedForRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     setDraftState('');
     setLoaded(false);
-    if (!connected) return undefined;
-    let active = true;
+    loadedForRef.current = undefined;
+    return () => {
+      detach(flush());
+    };
+  }, [loadKey, flush]);
+
+  // Read the stored draft once per session and channel, when connected.
+  useEffect(() => {
+    if (!connected || loadedForRef.current === loadKey) return;
+    loadedForRef.current = loadKey;
+    const current = () => loadedForRef.current === loadKey;
     client.channels
       .getChannel(channelRef.current)
       .then((found) => {
-        if (!active) return;
+        if (!current()) return;
         // Keep text typed before the read completed.
         if (pendingRef.current === undefined) setDraftState(found?.draft ?? '');
         setLoaded(true);
       })
-      .catch(() => active && setLoaded(true));
-    return () => {
-      active = false;
-      flush().catch(() => undefined);
-    };
-  }, [client, key, id, connected, flush]);
+      .catch(() => current() && setLoaded(true));
+  }, [client, loadKey, connected]);
 
   const setDraft = useCallback(
     (text: string) => {
@@ -150,12 +159,11 @@ export function useUnreadMentions(
     }
   }, [client]);
 
+  // New session or channel: clear and listen for mentions.
   useEffect(() => {
     tokenRef.current += 1;
     setMessages([]);
     setState(IDLE);
-    if (!connected) return undefined;
-    detach(refresh());
     const subs = [
       client.on('messageReceived', ({ message }) => {
         if (
@@ -171,7 +179,12 @@ export function useUnreadMentions(
       }),
     ];
     return () => subs.forEach((unsubscribe) => unsubscribe());
-  }, [client, key, id, connected, userId, refresh]);
+  }, [client, key, id, userId, refresh]);
+
+  // Load when connected, and revalidate after a reconnect.
+  useEffect(() => {
+    if (connected) detach(refresh());
+  }, [key, id, connected, refresh]);
 
   return { messages, refresh, ...state };
 }

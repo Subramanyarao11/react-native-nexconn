@@ -6,11 +6,12 @@ builds. It bridges the official Nexconn native SDKs (Android
 `ai.nexconn.chat:chat`, iOS `NexconnChat`) through one TurboModule and exposes
 a typed headless client, React hooks, an Expo config plugin and test doubles.
 
-**Status: feature-complete at source level, not yet verified natively.**
-151 bridge methods, 18 paged queries and 62 SDK events are implemented for
-both platforms (docs/PARITY.md). Native compilation, device runs and live
-messaging are pending on the cloud VMs (docs/STATUS.md,
-docs/CLOUD_TEST_RUNBOOK.md). Do not use in production. Expo Go is not supported.
+**Status: implemented for the pinned native SDKs; partly verified natively.**
+152 bridge methods, 18 paged queries and 62 SDK events are implemented for
+both platforms (docs/PARITY.md). Both bridges build and run live two-user
+chat on Android emulators and iOS simulators, but not every feature has been
+exercised on a device, and push has not been tested on physical devices
+(docs/STATUS.md). Do not use in production. Expo Go is not supported.
 
 ```ts
 import { AreaCode, ChannelType, getNexconnClient } from 'react-native-nexconn';
@@ -29,12 +30,16 @@ The App Secret belongs on your backend only (see `examples/token-server`).
 
 ## Documentation
 
+- docs/QUICKSTART.md — from an empty CLI or Expo app to a working chat
+- docs/REACT.md — every hook and how it stays current
+- docs/TROUBLESHOOTING.md — common build, connection and message errors
 - docs/API.md — installation (CLI and Expo), lifecycle, every module, hooks, push
 - docs/PARITY.md — generated capability matrix per platform
 - docs/BRIDGE_PROTOCOL.md — native wire protocol, threading, session rules
 - docs/CLOUD_TEST_RUNBOOK.md — what to run on the cloud VMs and the live checklist
 - docs/STATUS.md — verified results and open items
 - docs/BUILD_PLAN.md — plan and decisions
+- CHANGELOG.md and SECURITY.md
 
 ## Development
 
@@ -42,7 +47,8 @@ Use Node 24 and the Yarn version committed in .yarn/releases:
 
 ```sh
 yarn install
-yarn check                # tests, typecheck, lint, build
+yarn check                # unit tests, hook tests, typecheck, lint, build
+yarn test:react           # rendered hook tests only (Jest + RNTL)
 yarn example:expo start
 yarn example:cli start
 node scripts/generate-parity.mjs   # refresh docs/PARITY.md after API changes

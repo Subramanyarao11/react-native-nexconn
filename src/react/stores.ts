@@ -40,6 +40,13 @@ export class MessageListStore {
   readonly channel: ChannelIdentifier;
   private items: Message[] = [];
   private readonly maxSize: number;
+  /**
+   * Key (`c:clientId` / `s:messageId`) to absolute position. `items[i]` is at
+   * absolute position `base + i`, so trimming the oldest messages only
+   * deletes their keys instead of renumbering everything.
+   */
+  private index = new Map<string, number>();
+  private base = 0;
 
   constructor(channel: ChannelIdentifier, maxSize = 2000) {
     this.channel = channel;
@@ -91,34 +98,55 @@ export class MessageListStore {
     return true;
   }
 
-  /** Inserts or replaces messages; returns true if anything changed. */
+  /**
+   * Inserts or replaces messages; returns true if anything changed. Messages
+   * arriving in order are appended without re-sorting; the list is sorted
+   * only when an insert or replacement breaks the order.
+   */
   upsert(messages: readonly Message[]): boolean {
-    let changed = false;
-    const index = new Map<string, number>();
-    this.items.forEach((m, i) =>
-      messageKeys(m).forEach((k) => index.set(k, i))
-    );
-    const next = [...this.items];
+    let next: Message[] | undefined;
+    let needsSort = false;
     for (const message of messages) {
       if (!sameChannel(message.channel, this.channel)) continue;
-      const existing = messageKeys(message)
-        .map((k) => index.get(k))
-        .find((i) => i !== undefined);
-      if (existing !== undefined) {
-        next[existing] = message;
-      } else {
-        next.push(message);
-        messageKeys(message).forEach((k) => index.set(k, next.length - 1));
+      next ??= this.items.slice();
+      const keys = messageKeys(message);
+      let at: number | undefined;
+      for (const key of keys) {
+        const position = this.index.get(key);
+        if (position !== undefined) {
+          at = position - this.base;
+          break;
+        }
       }
-      changed = true;
+      const existing = at === undefined ? undefined : next[at];
+      if (at !== undefined && existing) {
+        next[at] = message;
+        if (compareMessages(existing, message) !== 0) needsSort = true;
+      } else {
+        const last = next[next.length - 1];
+        next.push(message);
+        at = next.length - 1;
+        if (last && compareMessages(last, message) > 0) needsSort = true;
+      }
+      for (const key of keys) this.index.set(key, this.base + at);
     }
-    if (!changed) return false;
-    next.sort((a, b) => a.sentTime - b.sentTime || a.clientId - b.clientId);
+    if (!next) return false;
+    this.items = next;
+    if (needsSort) {
+      next.sort(compareMessages);
+      this.reindex();
+    }
     // Keep the newest messages when the bound is exceeded.
-    this.items =
-      next.length > this.maxSize
-        ? next.slice(next.length - this.maxSize)
-        : next;
+    const excess = this.items.length - this.maxSize;
+    if (excess > 0) {
+      for (let i = 0; i < excess; i++) {
+        for (const key of messageKeys(this.items[i] as Message)) {
+          if (this.index.get(key) === this.base + i) this.index.delete(key);
+        }
+      }
+      this.items = this.items.slice(excess);
+      this.base += excess;
+    }
     return true;
   }
 
@@ -135,7 +163,16 @@ export class MessageListStore {
     );
     if (next.length === this.items.length) return false;
     this.items = next;
+    this.reindex();
     return true;
+  }
+
+  private reindex(): void {
+    this.base = 0;
+    this.index = new Map();
+    this.items.forEach((m, i) =>
+      messageKeys(m).forEach((key) => this.index.set(key, i))
+    );
   }
 
   /**
@@ -161,7 +198,12 @@ export class MessageListStore {
 
   reset(): void {
     this.items = [];
+    this.reindex();
   }
+}
+
+function compareMessages(a: Message, b: Message): number {
+  return a.sentTime - b.sentTime || a.clientId - b.clientId;
 }
 
 /** Channel list sorted by pinned first, then by most recent activity. */

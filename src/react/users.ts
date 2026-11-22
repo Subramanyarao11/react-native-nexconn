@@ -120,16 +120,12 @@ export function useOnlineStatus(
     ReadonlyMap<string, UserOnlineStatus>
   >(() => new Map());
 
-  useEffect(() => {
-    setStatuses(new Map());
-    const list = idsFromKey(ids);
-    if (!connected || list.length === 0) return undefined;
-    let active = true;
-    const read = (which: readonly string[]) => {
+  const read = useCallback(
+    (which: readonly string[], session: string) => {
       client.users
         .getOnlineStatus(which)
         .then((found) => {
-          if (!active || found.length === 0) return;
+          if (sessionRef.current !== session || found.length === 0) return;
           setStatuses((prev) => {
             const next = new Map(prev);
             found.forEach((s) => next.set(s.userId, s));
@@ -137,7 +133,37 @@ export function useOnlineStatus(
           });
         })
         .catch(() => undefined);
-    };
+    },
+    [client]
+  );
+  const sessionRef = useRef(`${key}|${ids}`);
+  sessionRef.current = `${key}|${ids}`;
+
+  // New session or user list: clear and listen for changes.
+  useEffect(() => {
+    setStatuses(new Map());
+    const list = idsFromKey(ids);
+    if (list.length === 0) return undefined;
+    const session = `${key}|${ids}`;
+    const wanted = new Set(list);
+    return client.on('subscriptionChanged', ({ events }) => {
+      const changed = events
+        .filter(
+          (e) =>
+            (e.subscribeType === SubscribeType.onlineStatus ||
+              e.subscribeType === SubscribeType.friendOnlineStatus) &&
+            wanted.has(e.userId)
+        )
+        .map((e) => e.userId);
+      if (changed.length > 0) read([...new Set(changed)], session);
+    });
+  }, [client, key, ids, read]);
+
+  // Subscribe (if asked) and read when connected; again after a reconnect.
+  useEffect(() => {
+    const list = idsFromKey(ids);
+    if (!connected || list.length === 0) return;
+    const session = `${key}|${ids}`;
     const start = subscribe
       ? client.users
           .subscribe({
@@ -147,24 +173,8 @@ export function useOnlineStatus(
           })
           .catch(() => undefined)
       : Promise.resolve();
-    detach(start.then(() => active && read(list)));
-    const wanted = new Set(list);
-    const off = client.on('subscriptionChanged', ({ events }) => {
-      const changed = events
-        .filter(
-          (e) =>
-            (e.subscribeType === SubscribeType.onlineStatus ||
-              e.subscribeType === SubscribeType.friendOnlineStatus) &&
-            wanted.has(e.userId)
-        )
-        .map((e) => e.userId);
-      if (changed.length > 0) read([...new Set(changed)]);
-    });
-    return () => {
-      active = false;
-      off();
-    };
-  }, [client, key, ids, connected, subscribe, expiry]);
+    detach(start.then(() => read(list, session)));
+  }, [client, key, ids, connected, subscribe, expiry, read]);
 
   return statuses;
 }
@@ -204,6 +214,10 @@ export function useBlockedUsers(): UseBlockedUsersResult {
     tokenRef.current += 1;
     setUserIds([]);
     setState(IDLE);
+  }, [key]);
+
+  // Load when connected, and revalidate after a reconnect.
+  useEffect(() => {
     if (connected) detach(refresh());
   }, [key, connected, refresh]);
 
@@ -261,12 +275,11 @@ export function useFriends(): UseFriendsResult {
     }
   }, [client]);
 
+  // New session: clear and follow friend events.
   useEffect(() => {
     tokenRef.current += 1;
     setFriends([]);
     setState(IDLE);
-    if (!connected) return undefined;
-    detach(refresh());
     let active = true;
     const subs = [
       client.on('friendAdded', ({ userId }) => {
@@ -307,7 +320,12 @@ export function useFriends(): UseFriendsResult {
       active = false;
       subs.forEach((unsubscribe) => unsubscribe());
     };
-  }, [client, key, connected, refresh]);
+  }, [client, key]);
+
+  // Load when connected, and revalidate after a reconnect.
+  useEffect(() => {
+    if (connected) detach(refresh());
+  }, [key, connected, refresh]);
 
   return { friends, refresh, ...state };
 }
