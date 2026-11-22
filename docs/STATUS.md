@@ -171,6 +171,9 @@ Branch `fix/session-restore-recall-release`; test plan in
   `sentStatus=30`, so Read comes from stored receipt counts. See the
   [X3 retest](STATUS_SESSION_2.md#x3-retest-at-ec16c9f-november-22-utc).
 
+- At `a7b4b31`, the Mac reran the iOS regressions on the X3 fix. All of them passed: T9/T10 recall, X6, R4 in Debug and Release, T12, R3–R5, and iOS receipts. See the
+  [iOS pre-merge regression](STATUS_SESSION_2.md#ios-pre-merge-regression-at-a7b4b31-november-22-utc).
+
 - At `d2d667f`, the Mac passed the iOS CLI and Expo Release builds, T9/T10
   account-switch recall, T12 (typing, JS reload, live and offline delivery),
   the iOS sender edit, and Release R3–R5. The Release sender image now appears

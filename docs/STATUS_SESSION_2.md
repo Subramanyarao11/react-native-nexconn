@@ -1,5 +1,24 @@
 # Cloud session 2 — Android and iOS retests
 
+## iOS pre-merge regression at `a7b4b31` (November 22 UTC)
+
+`a7b4b31` contains the JS-only X3 fix in `3c8c76c` plus docs. It was tested on two iOS 26.5 simulators:
+CLI Debug used the unchanged `d2d667f` native binary with fresh Metro JS, and Expo Release was rebuilt at `a7b4b31` and run with Metro off.
+Both bundles were confirmed to contain `readStateOf`.
+
+| Case | Result |
+| --- | --- |
+| B7 — Expo Release | **Pass (build).** `LANG=en_US.UTF-8 bash scripts/cloud/verify-ios.sh expo-release` passed, with an embedded bundle. |
+| T9 — Alice → Bob recall | **Pass.** At Bob gen 3, native reinit → receive → delete `js=yes` occurred at 07:50:07.409 → 07:50:27.769 → 07:50:33.552 UTC for `D208-U2PG-6SQ4-2VDL`. One JS `messagesDeleted` (`content.type=text`) followed, and the message was removed live. |
+| T10 — Bob → Alice recall | **Pass.** At Alice gen 7, the same order occurred at 07:55:33.620 → 07:55:52.051 → 07:56:06.031 UTC for `D209-0HUD-O324-J5K0`. One JS text deletion followed, and the message was removed live. |
+| X6 — iOS edit | **Pass.** The sender showed the new text and `· edited` immediately. The recipient got one `messagesUpdated` for `D208-U6QO-HO04-2VDL`. No Refresh was used. |
+| R4 — sender image (Debug) | **Pass.** The sender bubble appeared during upload. The recipient got `D208-UI8Q-Q664-2VDL` live. |
+| T12 — Bob regressions | **Pass.** Typing showed one start and one expiry. After a real JS reload, three live texts arrived once each. Three offline texts (`D208-VGU3-O364-2VDL`, `D208-VIVI-1PA4-2VDL`, `D208-VL1I-B564-2VDL`) arrived once each, in order (`left` 2/1/0), followed by one sync completion. No native `-1` error occurred. |
+| Receipts on iOS | **Pass.** A receipt-requested DM showed `read` on the iOS sender after the peer read it (1 read/0 unread). A `needReceipt:false` control (`D209-0617-N3Q4-J5K0`) stayed `sent`. A second no-receipt text (`D208-UTDA-QHQ4-2VDL`) later showed `read` only because the native SDK reported `sentStatus=50`; it had no JS receipt entry. |
+| R3 — Release sign-in | **Pass.** With Metro off, HTTPS sign-in worked for both accounts. Capabilities and settings were populated. |
+| R4 — Release text and image | **Pass.** Alice's image bubble appeared during upload and then showed `sent`. Bob received `D2IOSA7RELEASE1541` (07:59:04.947 UTC) and the image (07:59:22.735 UTC) live, without Refresh. The demo renders `[image]`; pixels were not checked. |
+| R5 — Release cold relaunch | **Pass.** A new process showed Sign in, and Alice reconnected at gen 1. |
+
 ## X3 retest at `ec16c9f` (November 22 UTC)
 
 `ec16c9f` is `3c8c76c` ("show Read from SDK receipt counts") plus docs. The
