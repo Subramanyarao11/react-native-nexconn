@@ -6,7 +6,7 @@ Pinned native SDKs: Android `ai.nexconn.chat:chat:26.4.2`, iOS `NexconnChat/Chat
 
 Statuses describe source-level implementation against the pinned SDK API. **No row is verified on a device or against the live service yet**; see docs/STATUS.md and docs/CLOUD_TEST_RUNBOOK.md. "unavailable upstream" means the vendor SDK for that platform has no equivalent API, and the bridge rejects the call with `unsupported`.
 
-Totals: 152 bridge methods, 18 paged query kinds, 62 SDK event types.
+Totals: 159 bridge methods, 18 paged query kinds, 67 SDK event types.
 
 ## Lifecycle, settings, push & do-not-disturb
 
@@ -210,6 +210,18 @@ Totals: 152 bridge methods, 18 paged query kinds, 62 SDK event types.
 | `query.loadNextPage` | implemented | implemented |
 | `query.release` | implemented | implemented |
 
+## Push notifications (permission, token, taps)
+
+| Bridge method | Android | iOS |
+| --- | --- | --- |
+| `push.clearNotification` | implemented | implemented |
+| `push.clearNotifications` | implemented | implemented |
+| `push.getInitialNotification` | implemented | implemented |
+| `push.getPermissionStatus` | implemented | implemented |
+| `push.getPushType` | implemented | unavailable upstream |
+| `push.getToken` | implemented | implemented |
+| `push.requestPermission` | unavailable upstream | implemented |
+
 ## Paged query kinds
 
 | Kind | Android | iOS |
@@ -299,6 +311,11 @@ Totals: 152 bridge methods, 18 paged query kinds, 62 SDK event types.
 | `UserHandler.onFriendCleared` | `friendsCleared` | implemented | implemented |
 | `UserHandler.onFriendInfoChangedSync` | `friendInfoChangedSync` | implemented | implemented |
 | `UserSettingsHandler.onUserSettingsSyncCompleted` | `userSettingsSyncCompleted` | implemented | implemented |
+| `Push.onNotificationOpened` | `notificationOpened` | implemented | implemented |
+| `Push.onNotificationReceived` | `notificationReceived` | implemented | implemented |
+| `Push.onTokenReceived` | `pushTokenReceived` | implemented | implemented |
+| `Push.onTokenError` | `pushTokenError` | implemented | implemented |
+| `Push.onTokenReportResult` | `pushTokenReportResult` | implemented | unavailable upstream |
 
 ## Not exposed (by design or pending)
 
@@ -307,4 +324,5 @@ Totals: 152 bridge methods, 18 paged query kinds, 62 SDK event types.
 - Android `UserModule.deleteFriends` — duplicate of `removeFriends` in the Android SDK; iOS has only `removeFriends`.
 - iOS `CommunitySearchMessagesByKeywordQuery` / `CommunitySearchMessagesByUserQuery` — no public factory found in the 26.4.2 interface; use `searchMessagesByUser` with `subChannelIds`.
 - Android `Message.restorePreviewDownloadedLocalPath`, `Message.createForPreview`, `BaseChannel.setEditedMessageDraft` (local property setter) — UI-preview helpers not needed through the bridge.
+- `push.requestPermission` on Android is implemented in JS (`PermissionsAndroid`, Android 13+), not natively.
 - Custom message types — supported through 16 plain + 16 media generic slots per platform (see docs/API.md).

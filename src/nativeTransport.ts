@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 import NativeNexconn from './NativeNexconn';
 import {
   decodeEnvelope,
@@ -6,12 +6,32 @@ import {
   type NativeEventEnvelope,
   type Transport,
 } from './core/transport.ts';
+import type { PushPermissionStatus } from './core/types.ts';
 
 const NOT_LINKED = JSON.stringify({
   category: 'not_linked',
   message:
     'The Nexconn native module is not linked. Rebuild the app (Expo Go is not supported).',
 });
+
+/**
+ * Android 13+ (API 33) needs the POST_NOTIFICATIONS runtime permission; older
+ * versions only have the system setting, read natively.
+ */
+export async function requestAndroidNotificationPermission(
+  systemStatus: () => Promise<PushPermissionStatus>
+): Promise<PushPermissionStatus> {
+  const permission = PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS;
+  if (
+    Platform.OS !== 'android' ||
+    Number(Platform.Version) < 33 ||
+    !permission
+  ) {
+    return systemStatus();
+  }
+  const result = await PermissionsAndroid.request(permission);
+  return result === PermissionsAndroid.RESULTS.GRANTED ? 'granted' : 'denied';
+}
 
 /** Transport backed by the Codegen TurboModule. */
 export function createNativeTransport(): Transport {

@@ -28,6 +28,7 @@ import type {
   NexconnEventMap,
   NexconnEventName,
   OutgoingContent,
+  PushNotification,
   ReadReceiptInfo,
   SendMediaCallbacks,
   SendOptions,
@@ -587,4 +588,24 @@ export function useTypingUsers(
     });
   }, [client, channelId]);
   return users;
+}
+
+/**
+ * Calls `handler` for each tapped Nexconn notification, including the one
+ * that launched the app. Typical use: navigate to
+ * `{ channelType, channelId }`. The latest `handler` is always used.
+ */
+export function useNotificationOpened(
+  handler: (notification: PushNotification) => void
+): void {
+  const client = useNexconnClient();
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  useEffect(
+    () =>
+      client.push.onNotificationOpened((notification) =>
+        handlerRef.current(notification)
+      ),
+    [client]
+  );
 }

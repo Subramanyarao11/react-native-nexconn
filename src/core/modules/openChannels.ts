@@ -1,5 +1,6 @@
 import type { Bridge } from '../bridge.ts';
 import { compact, requireString, requireStringList } from '../encode.ts';
+import { NexconnError } from '../errors.ts';
 import { normalizeMessage, normalizeValue } from '../normalize.ts';
 import { PagedQuery } from '../query.ts';
 import type {
@@ -18,21 +19,63 @@ export class OpenChannelsModule {
   }
 
   /**
-   * Enters an open channel. iOS resolves with the enter response; Android
-   * resolves with `undefined` and delivers the response through the
-   * `openChannelEntered` event.
+   * Enters an open channel and resolves with the enter response on both
+   * platforms. iOS returns it from the call; Android only reports it through
+   * `OpenChannelHandler.onEntered`, so on Android this waits for the matching
+   * `openChannelEntered` event (up to `responseTimeoutMs`, default 10 s) and
+   * resolves `undefined` if it does not arrive. An `openChannelEnterFailed`
+   * event for the channel rejects.
    */
   async enter(
     channelId: string,
-    options: { messageCount?: number; extra?: string } = {}
+    options: {
+      messageCount?: number;
+      extra?: string;
+      responseTimeoutMs?: number;
+    } = {}
   ): Promise<OpenChannelEnterResponse | undefined> {
-    const raw = await this.bridge.invoke(
-      'open.enter',
-      compact({ channelId: requireString(channelId, 'channelId'), ...options })
-    );
-    return raw == null
-      ? undefined
-      : (normalizeValue(raw) as OpenChannelEnterResponse);
+    const id = requireString(channelId, 'channelId');
+    const { responseTimeoutMs = 10_000, ...rest } = options;
+    let entered: OpenChannelEnterResponse | undefined | null = null;
+    let failed: NexconnError | undefined;
+    let wake: (() => void) | undefined;
+    const subs = [
+      this.bridge.on('openChannelEntered', (event) => {
+        if (event.channelId !== id) return;
+        entered = event.response;
+        wake?.();
+      }),
+      this.bridge.on('openChannelEnterFailed', (event) => {
+        if (event.channelId !== id) return;
+        failed = new NexconnError({
+          category: 'native',
+          message: event.error?.message ?? 'Entering the open channel failed',
+          nativeCode: event.error?.code,
+          method: 'open.enter',
+        });
+        wake?.();
+      }),
+    ];
+    try {
+      const raw = await this.bridge.invoke(
+        'open.enter',
+        compact({ channelId: id, ...rest })
+      );
+      if (raw != null) return normalizeValue(raw) as OpenChannelEnterResponse;
+      if (entered === null && !failed) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, responseTimeoutMs);
+          wake = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+      }
+      if (failed) throw failed;
+      return entered ?? undefined;
+    } finally {
+      subs.forEach((unsubscribe) => unsubscribe());
+    }
   }
 
   exit(channelId: string, extra?: string): Promise<void> {

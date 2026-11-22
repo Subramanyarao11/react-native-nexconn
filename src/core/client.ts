@@ -23,6 +23,7 @@ import { CommunityModule } from './modules/community.ts';
 import { GroupsModule } from './modules/groups.ts';
 import { MessagesModule } from './modules/messages.ts';
 import { OpenChannelsModule } from './modules/openChannels.ts';
+import { PushModule } from './modules/push.ts';
 import { TagsModule } from './modules/tags.ts';
 import { TranslationModule } from './modules/translation.ts';
 import { UsersModule } from './modules/users.ts';
@@ -117,6 +118,8 @@ export class NexconnClient {
   readonly translation: TranslationModule;
   readonly tags: TagsModule;
   readonly notifications: NotificationsModule;
+  /** Push permission, token and notification taps (works before initialize). */
+  readonly push: PushModule;
 
   private readonly bridge: Bridge;
   private snapshot: ClientSnapshot = {
@@ -143,6 +146,7 @@ export class NexconnClient {
     this.translation = new TranslationModule(this.bridge);
     this.tags = new TagsModule(this.bridge);
     this.notifications = new NotificationsModule(this.bridge);
+    this.push = new PushModule(this.bridge);
 
     this.internalSubscriptions.push(
       this.bridge.on('connectionStatusChanged', ({ status }) => {
