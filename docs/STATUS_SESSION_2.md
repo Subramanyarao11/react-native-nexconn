@@ -1,4 +1,4 @@
-# Cloud session 2 — Ubuntu Android retest
+# Cloud session 2 — Android and iOS retests
 
 ## Android follow-up at `d2d667f` (November 21–22 UTC)
 
@@ -36,6 +36,25 @@ client were stopped and data-cleared; no test app process remained on
 either emulator, and all ADB reverse mappings were removed. All three
 accounts were released exclusively to iOS. Location and push were not
 retested.
+
+## iOS follow-up at `d2d667f` (November 21–22 UTC)
+
+Built on Xcode 26.6 and tested on two iOS 26.5 simulators. The Ubuntu
+docs-only follow-up did not change the code under test.
+
+| Case | Result |
+| --- | --- |
+| B5 — CLI Debug | **Pass (build).** `LANG=en_US.UTF-8 bash scripts/cloud/verify-ios.sh cli`. |
+| B7 — Expo Release | **Pass (build).** `LANG=en_US.UTF-8 bash scripts/cloud/verify-ios.sh expo-release` verified the embedded `main.jsbundle`. |
+| X4 — iOS PNG sender | Sent the synthetic fixture via `messages.sendMedia` with `original:true` (ID `D208-2P85-TVM4-J5K0`). Android returned matching original bytes using the native SDK path, as recorded above. |
+| X6 — iOS sender edit | **Pass.** With the chat open, Bob typed the replacement and long-pressed his own message. The sender saw `D2IOSX6AFTER1304 · edited` immediately, without Refresh or reopening. The SDK retained ID `D208-3154-S244-J5K0` and reported `hasChanged=true`. |
+| T9 — Alice → Bob recall | **Pass.** Carol sent; the recipient process switched Alice → Bob (generation 3). Native order: re-initialize 06:58:20.948 → receive 06:58:40.534 → `onMessageDeleted js=yes` 06:58:46.503 UTC for `D208-6C5M-E9A4-2VDL`. One matching JS `messagesDeleted` (`content.type=text`); the bubble disappeared without Refresh or reopening. Fresh Alice baseline `D208-5UE8-SE04-J5K0` also passed. |
+| T10 — Bob → Alice recall | **Pass.** Same recipient process at generation 7: re-initialize 07:02:08.401 → receive 07:02:34.347 → delete `js=yes` 07:02:46.853 UTC for `D208-858A-FAA4-J5K0`; one matching JS text deletion and live removal. |
+| T12 — Bob regressions | **Pass.** One typing start and one expiry. A real JS reload kept Bob connected at generation 5, and three post-reload texts each arrived once. Three texts sent while Bob was disconnected arrived once, in order, at 07:17:21.521–.522 UTC (`D208-EOAC-0QE4-2VDL`, `D208-EOG6-0V84-2VDL`, `D208-EOMM-H4C4-2VDL`; `left` 2, 1, 0), followed by one sync completion. No native `-1` connect error. |
+| R3 — Release sign-in | **Pass.** Standalone Expo Release, Metro off: HTTPS sign-in, SDK 26.4.2 capabilities, and real app settings. The first sign-in after a VM restart returned native `30024`; restarting the app recovered it. |
+| R4 — Release text and image | **Pass.** Alice's `[image]` bubble appeared during upload, then showed `sent`, without Refresh. Bob received text `D208-97HR-MKK4-2VDL` (07:04:55.033 UTC) and image `D208-9D82-2E04-2VDL` (07:05:18.232 UTC) live in the open chat. The demo renders `[image]`; Release pixels and bytes were not checked. |
+| R5 — Release cold relaunch | **Pass.** Relaunch started a new process at 07:14:34 UTC, showed Sign in, and reconnected Alice at generation 1. |
+| X10 — Location | **Known vendor limitation, not retested.** Earlier live sends on both platforms failed with native code `31610`; this revision did not change the location path. |
 
 ## Earlier verification at `eb3cb59`
 

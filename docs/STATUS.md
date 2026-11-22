@@ -164,6 +164,12 @@ Branch `fix/session-restore-recall-release`; test plan in
   No new Android Expo release runtime claim was made. See the
   [follow-up results](STATUS_SESSION_2.md#android-follow-up-at-d2d667f-november-2122-utc).
 
+- At `d2d667f`, the Mac passed the iOS CLI and Expo Release builds, T9/T10
+  account-switch recall, T12 (typing, JS reload, live and offline delivery),
+  the iOS sender edit, and Release R3–R5. The Release sender image now appears
+  during upload without Refresh. See the
+  [iOS follow-up](STATUS_SESSION_2.md#ios-follow-up-at-d2d667f-november-2122-utc).
+
 ## Pending verification (cloud VMs / devices)
 
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
