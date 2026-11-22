@@ -1,5 +1,44 @@
 # Cloud session 2 — Ubuntu Android retest
 
+## Android follow-up at `d2d667f` (November 21–22 UTC)
+
+| Case | Result |
+| --- | --- |
+| B1 — JavaScript | **Pass.** All 55 tests, typecheck, lint (0 errors, 6 warnings), library build, Android/iOS Codegen, and pack. |
+| B2/B4 — CLI debug and Expo R8 | **Pass (build).** Rebuilt the x86_64 CLI debug APK at this revision (SHA-256 `99fb00a91b10a28ebc9451bda11bee119f2070c4a8ec1cd83df6deea5aeff75d`). Expo R8 preserved the six SDK class names and the runtime `@MessageTag(RC:TxtMsg)` annotation. The new Expo APK was not tested at runtime. |
+| T11 — Android account switch | **Pass.** Recipient Alice disconnected and signed in as Bob in the same process, generations 1 → 2 → 3. Fresh baseline and post-switch messages each had one JS receive and one matching `messagesDeleted` (`content.type=text`). Bob's native delete callback logged `gen=3 js=true`; the bubble disappeared live without Refresh or reopening. |
+| X4 — Android → Android original PNG | **Pass.** Real SDK upload and download with `original:true`: source and downloaded files were both 2,625 bytes and SHA-1 `f9d3171f15fc55680419ff648863a993b1d61248`. The SDK downloaded in 1,283 ms, reporting progress 0 → 100 without the fallback. The demo's default upload also downloaded, but the SDK converted the PNG to JPEG, so it is not a source-byte integrity check. |
+| X3 — iOS read receipt to Android | **Fail (live UI); receipt delivery passes.** Bob's chat was closed before Android sent the saved text with `needReceipt=true`, and opened only on cue. Android logged native `onMessageReceiptResponse gen=1 js=true` at 06:49:33.837 UTC on November 22, then exactly one matching JS `readReceiptResponse` at 06:49:33.853. The SDK reported read count 1, total 1, unread 0, but the open bubble still showed Sent approximately 1.3 seconds later and at 06:50:27, without Refresh or reopening. The updated hook does not meet the one-second Sent → Read criterion. |
+| X4 — iOS → Android original PNG | **Pass.** iOS sent the 128×96 PNG with the real SDK and `original:true`. Android's real `message.downloadMedia` resolved in 2,693 ms with progress 0 → 27 → 57 → 61 → 100. The file at the returned local path was a PNG, 27,326 bytes, SHA-1 `6c3855e59e98ff85f2468a38f68bf5846cc7de24`, matching iOS's SDK-local source exactly. The result had no `fallback` key (`false`); no watchdog or error occurred, so the new watchdog fallback itself was not exercised. |
+| X6 — Edit from iOS | **Pass (Android recipient).** With the chat kept open, Android logged exactly one native `onMessagesUpdated gen=1 js=true` at 06:53:06.557 UTC on November 22, then exactly one matching JS `messagesUpdated` at 06:53:06.559. The saved ID stayed the same, `D2IOSX6AFTER1304 · edited` appeared once, and the original text disappeared without Refresh or reopening. The Mac separately verified the sender's immediate update. |
+
+### Remaining X3 fix handoff
+
+The post-receipt real SDK `getById` still returned `sentStatus=30` (Sent),
+although the receipt reported `readCount=1`, `totalCount=1`, `unreadCount=0`.
+The receipt's message ID and channel matched the outgoing message and open
+DM. The demo renders only `message.sentStatus`, and the new hook merely
+replaces the bubble with the SDK's stored copy, so that lookup cannot make
+this message display Read.
+
+Reconcile the genuine receipt counts into receipt-aware message state and
+render Read from that state (or a bridge mapping backed by actual SDK read
+state). Do not mark every outgoing message Read or treat a partial group
+receipt as all-read. Retest from a visibly Sent message while the peer chat
+is closed; after the peer opens it, the matching bubble must become Read
+within one second without Refresh, reconnecting, or reopening. Keep the
+existing native/JS event de-duplication and account/channel isolation.
+
+The November 22 paired retry used Android Alice and iOS Bob only. After
+these rows, Alice disconnected through the UI (Sign in, generation 2,
+no user, not connected). Both Android CLI clients and the installed Expo
+client were stopped and data-cleared; no test app process remained on
+either emulator, and all ADB reverse mappings were removed. All three
+accounts were released exclusively to iOS. Location and push were not
+retested.
+
+## Earlier verification at `eb3cb59`
+
 Live checks took place on November 19–20, 2026 UTC.
 Tested [PR #4](https://github.com/Subramanyarao11/react-native-nexconn/pull/4)
 at `eb3cb5914a488022b767eebd42550bcf588218de`. Case identifiers follow

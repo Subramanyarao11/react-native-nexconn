@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated 20 November 2026.
+Last updated 22 November 2026.
 
 ## Summary
 
@@ -151,6 +151,18 @@ Branch `fix/session-restore-recall-release`; test plan in
   The fix is not yet verified natively: the iOS bridge re-initializes the
   SDK before a connect that follows a disconnect. Static trace and retest
   rows T9–T12 are in [cloud session 2](CLOUD_SESSION_2.md).
+
+- At `d2d667f`, Ubuntu passed JavaScript verification, fresh CLI debug and
+  Expo R8 builds, Android T11 account-switch recall, and an exact byte
+  comparison of an Android → Android PNG downloaded without the fallback.
+  Paired X3 receipt delivery passes, but the Android bubble still stays Sent
+  beyond one second and needs a further fix. The paired iOS → Android
+  original PNG matched the source bytes through the native SDK download
+  without the fallback; iOS edits reached Android once and appeared live.
+  A post-receipt SDK lookup still returns `sentStatus=30` despite read count
+  1, so the hook needs receipt-aware state rather than only rereading status.
+  No new Android Expo release runtime claim was made. See the
+  [follow-up results](STATUS_SESSION_2.md#android-follow-up-at-d2d667f-november-2122-utc).
 
 ## Pending verification (cloud VMs / devices)
 
