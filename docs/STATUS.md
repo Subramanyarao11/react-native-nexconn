@@ -71,7 +71,7 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
 | Check | Result |
 | --- | --- |
 | `yarn install --immutable` (Yarn 4.18.1, Node 24.22.2) | pass |
-| `yarn test` — 69 tests on 22 Nov 2026 (normalization, client lifecycle, stores, push, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
+| `yarn test` — 71 tests on 22 Nov 2026 (normalization, client lifecycle, stores, push, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
 | `yarn typecheck` (library, examples, shared demo) | pass |
 | `yarn lint` | 0 errors, 6 `no-void` warnings |
 | `yarn build` (Bob module + typings, `.ts` imports rewritten) | pass |
@@ -161,9 +161,37 @@ Branch `fix/session-restore-recall-release`; test plan in
   SDK before a connect that follows a disconnect. Static trace and retest
   rows T9–T12 are in [cloud session 2](CLOUD_SESSION_2.md).
 
+- At `d2d667f`, Ubuntu passed JavaScript verification, fresh CLI debug and
+  Expo R8 builds, Android T11 account-switch recall, and an exact byte
+  comparison of an Android → Android PNG downloaded without the fallback.
+  Paired X3 receipt delivery passes, but the Android bubble still stays Sent
+  beyond one second and needs a further fix. The paired iOS → Android
+  original PNG matched the source bytes through the native SDK download
+  without the fallback; iOS edits reached Android once and appeared live.
+  A post-receipt SDK lookup still returns `sentStatus=30` despite read count
+  1, so the hook needs receipt-aware state rather than only rereading status.
+  No new Android Expo release runtime claim was made. See the
+  [follow-up results](STATUS_SESSION_2.md#android-follow-up-at-d2d667f-november-2122-utc).
+
+- At `ec16c9f` (`3c8c76c` X3 fix plus docs), the paired X3 retest passed:
+  Android received exactly one matching iOS read receipt and the open bubble
+  changed from Sent to Read within one second without Refresh, reconnecting
+  or reopening, and stayed Read after reopening. The SDK still reports
+  `sentStatus=30`, so Read comes from stored receipt counts. See the
+  [X3 retest](STATUS_SESSION_2.md#x3-retest-at-ec16c9f-november-22-utc).
+
+- At `a7b4b31`, the Mac reran the iOS regressions on the X3 fix. All of them passed: T9/T10 recall, X6, R4 in Debug and Release, T12, R3–R5, and iOS receipts. See the
+  [iOS pre-merge regression](STATUS_SESSION_2.md#ios-pre-merge-regression-at-a7b4b31-november-22-utc).
+
+- At `d2d667f`, the Mac passed the iOS CLI and Expo Release builds, T9/T10
+  account-switch recall, T12 (typing, JS reload, live and offline delivery),
+  the iOS sender edit, and Release R3–R5. The Release sender image now appears
+  during upload without Refresh. See the
+  [iOS follow-up](STATUS_SESSION_2.md#ios-follow-up-at-d2d667f-november-2122-utc).
+
 ## Pending verification (cloud VMs / devices)
 
-Branch `feat/push-and-sdk-fixes` (stacked on PR #4) changes native code that
+Branch `feat/push-and-sdk-fixes` (PR #5, based on `main`) changes native code that
 has not been compiled. Build both platforms, then run the rows in
 [cloud session 3](CLOUD_SESSION_3.md): C1–C6 for the code fixes and P1–P7
 from [PUSH.md](PUSH.md), which need physical devices.

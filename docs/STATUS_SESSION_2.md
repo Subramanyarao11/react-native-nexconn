@@ -1,4 +1,104 @@
-# Cloud session 2 — Ubuntu Android retest
+# Cloud session 2 — Android and iOS retests
+
+## iOS pre-merge regression at `a7b4b31` (November 22 UTC)
+
+`a7b4b31` contains the JS-only X3 fix in `3c8c76c` plus docs. It was tested on two iOS 26.5 simulators:
+CLI Debug used the unchanged `d2d667f` native binary with fresh Metro JS, and Expo Release was rebuilt at `a7b4b31` and run with Metro off.
+Both bundles were confirmed to contain `readStateOf`.
+
+| Case | Result |
+| --- | --- |
+| B7 — Expo Release | **Pass (build).** `LANG=en_US.UTF-8 bash scripts/cloud/verify-ios.sh expo-release` passed, with an embedded bundle. |
+| T9 — Alice → Bob recall | **Pass.** At Bob gen 3, native reinit → receive → delete `js=yes` occurred at 07:50:07.409 → 07:50:27.769 → 07:50:33.552 UTC for `D208-U2PG-6SQ4-2VDL`. One JS `messagesDeleted` (`content.type=text`) followed, and the message was removed live. |
+| T10 — Bob → Alice recall | **Pass.** At Alice gen 7, the same order occurred at 07:55:33.620 → 07:55:52.051 → 07:56:06.031 UTC for `D209-0HUD-O324-J5K0`. One JS text deletion followed, and the message was removed live. |
+| X6 — iOS edit | **Pass.** The sender showed the new text and `· edited` immediately. The recipient got one `messagesUpdated` for `D208-U6QO-HO04-2VDL`. No Refresh was used. |
+| R4 — sender image (Debug) | **Pass.** The sender bubble appeared during upload. The recipient got `D208-UI8Q-Q664-2VDL` live. |
+| T12 — Bob regressions | **Pass.** Typing showed one start and one expiry. After a real JS reload, three live texts arrived once each. Three offline texts (`D208-VGU3-O364-2VDL`, `D208-VIVI-1PA4-2VDL`, `D208-VL1I-B564-2VDL`) arrived once each, in order (`left` 2/1/0), followed by one sync completion. No native `-1` error occurred. |
+| Receipts on iOS | **Pass.** A receipt-requested DM showed `read` on the iOS sender after the peer read it (1 read/0 unread). A `needReceipt:false` control (`D209-0617-N3Q4-J5K0`) stayed `sent`. A second no-receipt text (`D208-UTDA-QHQ4-2VDL`) later showed `read` only because the native SDK reported `sentStatus=50`; it had no JS receipt entry. |
+| R3 — Release sign-in | **Pass.** With Metro off, HTTPS sign-in worked for both accounts. Capabilities and settings were populated. |
+| R4 — Release text and image | **Pass.** Alice's image bubble appeared during upload and then showed `sent`. Bob received `D2IOSA7RELEASE1541` (07:59:04.947 UTC) and the image (07:59:22.735 UTC) live, without Refresh. The demo renders `[image]`; pixels were not checked. |
+| R5 — Release cold relaunch | **Pass.** A new process showed Sign in, and Alice reconnected at gen 1. |
+
+## X3 retest at `ec16c9f` (November 22 UTC)
+
+`ec16c9f` is `3c8c76c` ("show Read from SDK receipt counts") plus docs. The
+change is JavaScript-only (`src/react`, `examples/shared/DemoApp.tsx`), so
+both sides reused their unchanged `d2d667f` native apps with Metro serving
+`ec16c9f`; each side confirmed the new receipt-state code was in the bundle.
+Android ran the `d2d667f` CLI debug APK (SHA-256
+`99fb00a91b10a28ebc9451bda11bee119f2070c4a8ec1cd83df6deea5aeff75d`).
+
+| Case | Result |
+| --- | --- |
+| X3 — iOS read receipt to Android | **Pass.** Android Alice sent `EC16-X3-A2I-1401` once from the UI with `needReceipt=true`; it visibly showed Sent while Bob's chat was closed. iOS Bob received it natively at 07:38:09.856 UTC (generation 1, forwarded to JS) and opened the DM on cue between 07:39:05.612 and 07:39:11.409 UTC; the message (ID `D208-OEKC-OI04-2VDL`) appeared once, without Refresh. Android logged exactly one native `onMessageReceiptResponse gen=1 js=true` at 07:39:09.144 UTC and one matching JS `readReceiptResponse` at 07:39:09.214 (read 1, total 1, unread 0). The bubble changed from Sent to Read without Refresh, reconnecting or reopening. The clock-calibrated upper bound from native receipt to visible Read was 968 ms (898 ms from the JS event); this bound includes capture and clock uncertainty. After the live criterion was judged, closing and reopening the DM kept Read. |
+
+The SDK's `getById` still returns `sentStatus=30` for the same message, so
+Read comes from the receipt counts the hook now stores, not from the SDK's
+sent status.
+
+The run used Android Alice and iOS Bob only; Carol was unused. Afterwards,
+Alice disconnected through the UI, the Android apps were stopped and
+data-cleared, and no app process, ADB reverse mapping, Metro/token service
+or collector remained. All accounts were released to iOS. Other PR rows,
+standalone release builds, location and push were not repeated.
+
+## Android follow-up at `d2d667f` (November 21–22 UTC)
+
+| Case | Result |
+| --- | --- |
+| B1 — JavaScript | **Pass.** All 55 tests, typecheck, lint (0 errors, 6 warnings), library build, Android/iOS Codegen, and pack. |
+| B2/B4 — CLI debug and Expo R8 | **Pass (build).** Rebuilt the x86_64 CLI debug APK at this revision (SHA-256 `99fb00a91b10a28ebc9451bda11bee119f2070c4a8ec1cd83df6deea5aeff75d`). Expo R8 preserved the six SDK class names and the runtime `@MessageTag(RC:TxtMsg)` annotation. The new Expo APK was not tested at runtime. |
+| T11 — Android account switch | **Pass.** Recipient Alice disconnected and signed in as Bob in the same process, generations 1 → 2 → 3. Fresh baseline and post-switch messages each had one JS receive and one matching `messagesDeleted` (`content.type=text`). Bob's native delete callback logged `gen=3 js=true`; the bubble disappeared live without Refresh or reopening. |
+| X4 — Android → Android original PNG | **Pass.** Real SDK upload and download with `original:true`: source and downloaded files were both 2,625 bytes and SHA-1 `f9d3171f15fc55680419ff648863a993b1d61248`. The SDK downloaded in 1,283 ms, reporting progress 0 → 100 without the fallback. The demo's default upload also downloaded, but the SDK converted the PNG to JPEG, so it is not a source-byte integrity check. |
+| X3 — iOS read receipt to Android | **Fail (live UI); receipt delivery passes.** Bob's chat was closed before Android sent the saved text with `needReceipt=true`, and opened only on cue. Android logged native `onMessageReceiptResponse gen=1 js=true` at 06:49:33.837 UTC on November 22, then exactly one matching JS `readReceiptResponse` at 06:49:33.853. The SDK reported read count 1, total 1, unread 0, but the open bubble still showed Sent approximately 1.3 seconds later and at 06:50:27, without Refresh or reopening. The updated hook does not meet the one-second Sent → Read criterion. |
+| X4 — iOS → Android original PNG | **Pass.** iOS sent the 128×96 PNG with the real SDK and `original:true`. Android's real `message.downloadMedia` resolved in 2,693 ms with progress 0 → 27 → 57 → 61 → 100. The file at the returned local path was a PNG, 27,326 bytes, SHA-1 `6c3855e59e98ff85f2468a38f68bf5846cc7de24`, matching iOS's SDK-local source exactly. The result had no `fallback` key (`false`); no watchdog or error occurred, so the new watchdog fallback itself was not exercised. |
+| X6 — Edit from iOS | **Pass (Android recipient).** With the chat kept open, Android logged exactly one native `onMessagesUpdated gen=1 js=true` at 06:53:06.557 UTC on November 22, then exactly one matching JS `messagesUpdated` at 06:53:06.559. The saved ID stayed the same, `D2IOSX6AFTER1304 · edited` appeared once, and the original text disappeared without Refresh or reopening. The Mac separately verified the sender's immediate update. |
+
+### X3 fix handoff (fixed in `3c8c76c`; see the `ec16c9f` retest above)
+
+The post-receipt real SDK `getById` still returned `sentStatus=30` (Sent),
+although the receipt reported `readCount=1`, `totalCount=1`, `unreadCount=0`.
+The receipt's message ID and channel matched the outgoing message and open
+DM. The demo renders only `message.sentStatus`, and the new hook merely
+replaces the bubble with the SDK's stored copy, so that lookup cannot make
+this message display Read.
+
+Reconcile the genuine receipt counts into receipt-aware message state and
+render Read from that state (or a bridge mapping backed by actual SDK read
+state). Do not mark every outgoing message Read or treat a partial group
+receipt as all-read. Retest from a visibly Sent message while the peer chat
+is closed; after the peer opens it, the matching bubble must become Read
+within one second without Refresh, reconnecting, or reopening. Keep the
+existing native/JS event de-duplication and account/channel isolation.
+
+The November 22 paired retry used Android Alice and iOS Bob only. After
+these rows, Alice disconnected through the UI (Sign in, generation 2,
+no user, not connected). Both Android CLI clients and the installed Expo
+client were stopped and data-cleared; no test app process remained on
+either emulator, and all ADB reverse mappings were removed. All three
+accounts were released exclusively to iOS. Location and push were not
+retested.
+
+## iOS follow-up at `d2d667f` (November 21–22 UTC)
+
+Built on Xcode 26.6 and tested on two iOS 26.5 simulators. The Ubuntu
+docs-only follow-up did not change the code under test.
+
+| Case | Result |
+| --- | --- |
+| B5 — CLI Debug | **Pass (build).** `LANG=en_US.UTF-8 bash scripts/cloud/verify-ios.sh cli`. |
+| B7 — Expo Release | **Pass (build).** `LANG=en_US.UTF-8 bash scripts/cloud/verify-ios.sh expo-release` verified the embedded `main.jsbundle`. |
+| X4 — iOS PNG sender | Sent the synthetic fixture via `messages.sendMedia` with `original:true` (ID `D208-2P85-TVM4-J5K0`). Android returned matching original bytes using the native SDK path, as recorded above. |
+| X6 — iOS sender edit | **Pass.** With the chat open, Bob typed the replacement and long-pressed his own message. The sender saw `D2IOSX6AFTER1304 · edited` immediately, without Refresh or reopening. The SDK retained ID `D208-3154-S244-J5K0` and reported `hasChanged=true`. |
+| T9 — Alice → Bob recall | **Pass.** Carol sent; the recipient process switched Alice → Bob (generation 3). Native order: re-initialize 06:58:20.948 → receive 06:58:40.534 → `onMessageDeleted js=yes` 06:58:46.503 UTC for `D208-6C5M-E9A4-2VDL`. One matching JS `messagesDeleted` (`content.type=text`); the bubble disappeared without Refresh or reopening. Fresh Alice baseline `D208-5UE8-SE04-J5K0` also passed. |
+| T10 — Bob → Alice recall | **Pass.** Same recipient process at generation 7: re-initialize 07:02:08.401 → receive 07:02:34.347 → delete `js=yes` 07:02:46.853 UTC for `D208-858A-FAA4-J5K0`; one matching JS text deletion and live removal. |
+| T12 — Bob regressions | **Pass.** One typing start and one expiry. A real JS reload kept Bob connected at generation 5, and three post-reload texts each arrived once. Three texts sent while Bob was disconnected arrived once, in order, at 07:17:21.521–.522 UTC (`D208-EOAC-0QE4-2VDL`, `D208-EOG6-0V84-2VDL`, `D208-EOMM-H4C4-2VDL`; `left` 2, 1, 0), followed by one sync completion. No native `-1` connect error. |
+| R3 — Release sign-in | **Pass.** Standalone Expo Release, Metro off: HTTPS sign-in, SDK 26.4.2 capabilities, and real app settings. The first sign-in after a VM restart returned native `30024`; restarting the app recovered it. |
+| R4 — Release text and image | **Pass.** Alice's `[image]` bubble appeared during upload, then showed `sent`, without Refresh. Bob received text `D208-97HR-MKK4-2VDL` (07:04:55.033 UTC) and image `D208-9D82-2E04-2VDL` (07:05:18.232 UTC) live in the open chat. The demo renders `[image]`; Release pixels and bytes were not checked. |
+| R5 — Release cold relaunch | **Pass.** Relaunch started a new process at 07:14:34 UTC, showed Sign in, and reconnected Alice at generation 1. |
+| X10 — Location | **Known vendor limitation, not retested.** Earlier live sends on both platforms failed with native code `31610`; this revision did not change the location path. |
+
+## Earlier verification at `eb3cb59`
 
 Live checks took place on November 19–20, 2026 UTC.
 Tested [PR #4](https://github.com/Subramanyarao11/react-native-nexconn/pull/4)

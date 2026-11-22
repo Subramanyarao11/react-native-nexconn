@@ -1,7 +1,7 @@
 # Cloud session 3: test plan
 
-Branch: `feat/push-and-sdk-fixes`. It is stacked on PR #4
-(`fix/session-restore-recall-release`). Record results in this file under
+Branch: `feat/push-and-sdk-fixes`, on `main` after PR #4 (`82eb8d0`).
+Record results in this file under
 "Results", then update `docs/STATUS.md`. Never paste tokens, the App Secret,
 push tokens or `google-services.json`.
 
@@ -23,7 +23,7 @@ code on the VM.
 
 | # | Command | Pass |
 | --- | --- | --- |
-| B1 | `bash scripts/cloud/verify-js.sh` | 69/69 tests, typecheck, lint 0 errors |
+| B1 | `bash scripts/cloud/verify-js.sh` | 71/71 tests, typecheck, lint 0 errors |
 | B2 (Ubuntu) | `bash scripts/cloud/verify-android.sh cli` and `expo-release` | Builds; R8 mapping checks pass; merged manifest contains `NexconnPushInitProvider` (`grep -r NexconnPushInitProvider android/app/build/intermediates/merged_manifests`) |
 | B3 (Mac) | `bash scripts/cloud/verify-ios.sh cli` and `expo-release` | Builds with `NexconnPush.swift`; the CLI AppDelegate compiles inside `#if canImport(Nexconn)` and the import resolves (check the build log for "Nexconn" module import) |
 | B4 | `bash scripts/cloud/verify-packed-consumers.sh` | Pass |

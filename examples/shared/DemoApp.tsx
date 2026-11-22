@@ -314,13 +314,27 @@ function Conversations({ onOpen }: { onOpen: (c: ChannelIdentifier) => void }) {
 // Chat
 // ---------------------------------------------------------------------------
 
+/** "read", or "read 2/5" in groups; empty when unread. */
+function readLabel(state: {
+  read: boolean;
+  readCount?: number;
+  totalCount?: number;
+}): string {
+  if (!state.read) return '';
+  return state.totalCount !== undefined && state.totalCount > 1
+    ? `read ${state.readCount ?? 0}/${state.totalCount}`
+    : 'read';
+}
+
 function MessageBubble({
   message,
   mine,
+  readLabel: read,
   onLongPress,
 }: {
   message: Message;
   mine: boolean;
+  readLabel: string;
   onLongPress: () => void;
 }) {
   return (
@@ -333,7 +347,9 @@ function MessageBubble({
       <Text style={styles.meta}>
         {new Date(message.sentTime).toLocaleTimeString()}
         {message.hasChanged ? ' · edited' : ''}
-        {mine ? ` · ${String(enumNameSafe(message.sentStatus))}` : ''}
+        {mine
+          ? ` · ${read && message.sentStatus >= 30 ? read : String(enumNameSafe(message.sentStatus))}`
+          : ''}
       </Text>
     </Pressable>
   );
@@ -362,6 +378,8 @@ function Chat({
   const { userId } = useConnection();
   const {
     messages,
+    receipts,
+    readState,
     loadOlder,
     send,
     edit,
@@ -478,11 +496,15 @@ function Chat({
       <FlatList
         inverted
         data={inverted}
+        extraData={receipts}
         keyExtractor={(m) => `${m.clientId}:${m.messageId ?? ''}`}
         renderItem={({ item }) => (
           <MessageBubble
             message={item}
             mine={item.senderUserId === userId}
+            readLabel={
+              item.senderUserId === userId ? readLabel(readState(item)) : ''
+            }
             onLongPress={() => onLongPressMessage(item)}
           />
         )}
