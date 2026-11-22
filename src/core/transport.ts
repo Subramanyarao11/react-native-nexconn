@@ -1,7 +1,7 @@
 /**
  * Internal boundary between the typed client and the selected native engine.
  * The production implementation is the Codegen TurboModule
- * (`nativeTransport.ts`); tests use `react-native-nexconn/testing`.
+ * (`nativeTransport.ts`); tests use `@subramanyarao11/react-native-nexconn/testing`.
  */
 
 /** Envelope of every event emitted by the native layer. */

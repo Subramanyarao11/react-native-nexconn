@@ -1,9 +1,9 @@
 /**
  * react-native-nexconn — community React Native Chat SDK for Nexconn.
  *
- * Headless entry point. React bindings: `react-native-nexconn/react`.
- * Expo config plugin: `react-native-nexconn/app.plugin.js`.
- * Test doubles: `react-native-nexconn/testing`.
+ * Headless entry point. React bindings: `@subramanyarao11/react-native-nexconn/react`.
+ * Expo config plugin: `@subramanyarao11/react-native-nexconn/app.plugin.js`.
+ * Test doubles: `@subramanyarao11/react-native-nexconn/testing`.
  */
 import { NexconnClient } from './core/client.ts';
 import {

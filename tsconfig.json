@@ -2,9 +2,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "react-native-nexconn": ["./src/index"],
-      "react-native-nexconn/react": ["./src/react/index"],
-      "react-native-nexconn/testing": ["./src/testing/index"]
+      "@subramanyarao11/react-native-nexconn": ["./src/index"],
+      "@subramanyarao11/react-native-nexconn/react": ["./src/react/index"],
+      "@subramanyarao11/react-native-nexconn/testing": ["./src/testing/index"]
     },
     "allowImportingTsExtensions": true,
     "allowUnreachableCode": false,

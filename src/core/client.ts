@@ -393,7 +393,7 @@ export class NexconnClient {
 
   /**
    * Registers custom message types. The native bridge provides a fixed pool
-   * of generic content classes (see docs/API.md); register all types once,
+   * of generic content classes (see docs/guide/api.md); register all types once,
    * after `initialize` and before `connect`.
    */
   async registerCustomMessages(

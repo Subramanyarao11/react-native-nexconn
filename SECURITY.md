@@ -1,14 +1,13 @@
 # Security
 
-This is a private community project. It is not an official Nexconn product,
-and Nexconn does not support it.
+This is a community project. It is not an official Nexconn product, and
+Nexconn does not support it.
 
 ## Reporting a vulnerability
 
-Report suspected vulnerabilities privately to the repository owner. Use
-GitHub's private vulnerability reporting on this repository if it is enabled;
-otherwise message the owner directly. Don't open a public issue or pull
-request.
+Report suspected vulnerabilities privately through GitHub's
+[private vulnerability reporting](https://github.com/Subramanyarao11/react-native-nexconn/security/advisories/new)
+for this repository. Don't open a public issue or pull request.
 
 Include the affected version or commit, the platform, steps to reproduce, and
 the impact you expect. Leave out real tokens, App Secrets, message contents
@@ -30,4 +29,4 @@ This project does not forward reports to vendors on anyone's behalf.
 
 ## Supported versions
 
-There are no releases yet. Fixes go to `main`.
+Only the latest published version gets fixes while the package is in beta.

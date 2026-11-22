@@ -1,4 +1,4 @@
-import { AreaCode } from 'react-native-nexconn';
+import { AreaCode } from '@subramanyarao11/react-native-nexconn';
 import { DemoApp } from '../../examples/shared/DemoApp';
 import { demoConfig } from './config';
 

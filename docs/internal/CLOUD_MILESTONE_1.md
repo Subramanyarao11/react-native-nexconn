@@ -1,8 +1,8 @@
 # First cloud implementation milestone
 
 Continue the private community React Native Chat SDK in
-`Subramanyarao11/react-native-nexconn`. Read `AGENTS.md`, `docs/STATUS.md` and
-`docs/BUILD_PLAN.md`, then follow the applicable project-local Callstack and
+`Subramanyarao11/react-native-nexconn`. Read `AGENTS.md`, `docs/reference/status.md` and
+`docs/internal/BUILD_PLAN.md`, then follow the applicable project-local Callstack and
 Expo skills. Preserve the current package scaffold and both consumer fixtures.
 The environment must be published and runnable before this task starts.
 
@@ -65,7 +65,7 @@ unverified runtime behavior clearly marked and document any concrete blockers.
 - Provide exact Mac commands for Android/iOS validation of both consumer
   fixtures. Keep live two-user messaging, reconnect/account-switch tests and
   physical-device push checks pending until actually exercised.
-- Update `docs/STATUS.md` with changed behavior, executed checks, failures and
+- Update `docs/reference/status.md` with changed behavior, executed checks, failures and
   remaining work. Commit the reviewable changes and report the commit or draft
   PR, if repository permissions permit. Keep the repository/package private.
   Do not publish npm releases, change visibility, finalize licensing, contact

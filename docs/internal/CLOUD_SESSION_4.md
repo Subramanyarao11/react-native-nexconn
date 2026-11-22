@@ -2,7 +2,7 @@
 
 Branch: `feat/react-hooks`, based on `main` (`82eb8d0`). It's independent of
 the push branch (PR #5). Record results under "Results", then update
-`docs/STATUS.md`. Never paste tokens, the App Secret, or message contents
+`docs/reference/status.md`. Never paste tokens, the App Secret, or message contents
 beyond the test strings below.
 
 ## What changed
@@ -13,7 +13,7 @@ if the installed app is from `main`.
 
 | Area | Change |
 | --- | --- |
-| New hooks | Groups, users and friends, search, drafts, mentions, open and community channels. See [REACT.md](REACT.md) |
+| New hooks | Groups, users and friends, search, drafts, mentions, open and community channels. See [REACT.md](../guide/react.md) |
 | `useMessages` | Send state with upload progress, `retry` (only after an SDK-reported failure), `cancel`, `discard`, `reply`. Keeps history through network drops and revalidates after reconnecting |
 | `useChannelList` | Keeps channels through network drops and revalidates after reconnecting |
 | `MessageListStore` | Indexed updates. Live append is about 75 times faster (JS benchmark) |

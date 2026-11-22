@@ -1,8 +1,8 @@
 # Cloud session 2 — test plan
 
 Branch: `fix/session-restore-recall-release` (merge to `main` once green).
-Record every result in a new `docs/STATUS_SESSION_2.md` using the tables
-below, then update `docs/STATUS.md`. Never paste tokens or the App Secret.
+Record every result in a new `docs/internal/STATUS_SESSION_2.md` using the tables
+below, then update `docs/reference/status.md`. Never paste tokens or the App Secret.
 
 ## What changed since session 1
 

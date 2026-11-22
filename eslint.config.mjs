@@ -31,6 +31,8 @@ export default defineConfig([
       '.agents/**',
       'example-cli/ios/**',
       'example-cli/android/**',
+      'docs/.vitepress/dist/**',
+      'docs/.vitepress/cache/**',
     ],
   },
 ]);

@@ -37,7 +37,7 @@ import {
   type MessageContent,
   type NexconnClient,
   type OutgoingContent,
-} from 'react-native-nexconn';
+} from '@subramanyarao11/react-native-nexconn';
 import {
   NexconnProvider,
   useBlockedUsers,
@@ -59,7 +59,7 @@ import {
   useUnreadMentions,
   useUsers,
   type MessageSendState,
-} from 'react-native-nexconn/react';
+} from '@subramanyarao11/react-native-nexconn/react';
 
 export interface DemoDefaults {
   appKey?: string;

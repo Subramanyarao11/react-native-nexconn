@@ -2,14 +2,14 @@
 
 Branch: `feat/push-and-sdk-fixes`, on `main` after PR #4 (`82eb8d0`).
 Record results in this file under
-"Results", then update `docs/STATUS.md`. Never paste tokens, the App Secret,
+"Results", then update `docs/reference/status.md`. Never paste tokens, the App Secret,
 push tokens or `google-services.json`.
 
 ## What changed
 
 | Area | Change | Native code |
 | --- | --- | --- |
-| Push | New `push.*` bridge methods, push events, `client.push`, `useNotificationOpened`, and the Android `NexconnPushInitProvider`. iOS adds `NexconnPush.swift` and AppDelegate helpers; the CLI example AppDelegate is wired. See [PUSH.md](PUSH.md) | New Kotlin and Swift files; manifest provider |
+| Push | New `push.*` bridge methods, push events, `client.push`, `useNotificationOpened`, and the Android `NexconnPushInitProvider`. iOS adds `NexconnPush.swift` and AppDelegate helpers; the CLI example AppDelegate is wired. See [PUSH.md](../guide/push.md) | New Kotlin and Swift files; manifest provider |
 | Reply refresh | `message.refreshReference` times out (default 15 s) with `timedOut: true` | Both |
 | Group nickname | Android `group.setMemberInfo` without a nickname keeps the current one | Android |
 | Open channel | `openChannels.enter` resolves with the enter response on Android too (JS waits for `onEntered`) | None |
@@ -41,7 +41,7 @@ code on the VM.
 
 ## 3. Push on physical devices (only if available)
 
-Rows P1–P7 in [PUSH.md](PUSH.md). These need an FCM project with
+Rows P1–P7 in [PUSH.md](../guide/push.md). These need an FCM project with
 `google-services.json`, APNs keys uploaded to the Nexconn console, and a
 signed iOS build on a device. Skip them and record "not run" if any of that is
 missing; emulators are not evidence of delivery.
@@ -58,7 +58,7 @@ missing; emulators are not evidence of delivery.
 
 Ubuntu 22.04, Node 24.22.2, Yarn 4.18.1, JDK 17, Android SDK 36/37, NDK
 27.1.12297006. Builds and C rows ran at `b025132`; `3fe30a3` changes only iOS
-files and `docs/STATUS.md`, so the Android results apply to it unchanged.
+files and `docs/reference/status.md`, so the Android results apply to it unchanged.
 Emulators: API 36 and API 35 (16 KB). Runtime rows used fresh CLI Debug APKs
 built from this branch (both installs SHA-256 `53138d62…7bf9c`) with Metro
 serving this branch, and two real Nexconn users. No source was changed.

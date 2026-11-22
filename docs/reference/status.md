@@ -1,6 +1,6 @@
-# Implementation status
+# Verification status
 
-Last updated 22 November 2026.
+Last updated 22 November 2026 (release `0.1.0-beta.0`).
 
 ## Summary
 
@@ -8,14 +8,14 @@ The SDK is **implemented at source level for the full public surface of the
 pinned Nexconn native SDKs** (Android `ai.nexconn.chat:chat:26.4.2`, iOS
 `NexconnChat/Chat 26.4.2`): 159 bridge methods, 18 paged query kinds and 67
 event types (62 SDK handler events plus 5 push events), with 8 documented
-platform-only methods and 1 Android-only push event (docs/PARITY.md).
-Comparison with the Flutter SDK: [FLUTTER_PARITY.md](FLUTTER_PARITY.md).
+platform-only methods and 1 Android-only push event ([parity matrix](parity.md)).
+Comparison with the Flutter SDK: [Flutter comparison](flutter.md).
 
 Both native bridges have connected to Nexconn from the CLI fixtures on
 Android emulators and an iOS simulator. The Android CLI and Expo fixtures
-also build with R8. See [the session 2 results](STATUS_SESSION_2.md) for the
+also build with R8. See [the session 2 results](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/STATUS_SESSION_2.md) for the
 tested revisions, runtime checks, and limits, and the
-[cloud runbook](CLOUD_TEST_RUNBOOK.md) for how to repeat them.
+[cloud runbook](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_TEST_RUNBOOK.md) for how to repeat them.
 
 ## Route decision
 
@@ -55,7 +55,7 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
   events, `useNotificationOpened`. Android installs a forwarding RongPush
   listener at process start (`NexconnPushInitProvider`); iOS adds AppDelegate
   helpers and an opt-in forwarding notification delegate. See
-  [PUSH.md](PUSH.md).
+  [PUSH.md](../guide/push.md).
 - Expo config plugin (Maven repo, optional FCM wiring, notification-tap
   intent filters, optional APNs entitlement/background mode, SDK version pin),
   idempotent edits.
@@ -109,7 +109,7 @@ These are build and typecheck results, not a dependency security audit.
 ## Changes and verification after iOS session 1
 
 Branch `fix/session-restore-recall-release`; test plan in
-[cloud session 2](CLOUD_SESSION_2.md).
+[cloud session 2](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_SESSION_2.md).
 
 - JS reload: new `engine.getSessionState` on both bridges;
   `client.restoreSession()` (called by `NexconnProvider` and by
@@ -160,7 +160,7 @@ Branch `fix/session-restore-recall-release`; test plan in
 
   The fix is not yet verified natively: the iOS bridge re-initializes the
   SDK before a connect that follows a disconnect. Static trace and retest
-  rows T9–T12 are in [cloud session 2](CLOUD_SESSION_2.md).
+  rows T9–T12 are in [cloud session 2](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_SESSION_2.md).
 
 - At `d2d667f`, Ubuntu passed JavaScript verification, fresh CLI debug and
   Expo R8 builds, Android T11 account-switch recall, and an exact byte
@@ -172,29 +172,29 @@ Branch `fix/session-restore-recall-release`; test plan in
   A post-receipt SDK lookup still returns `sentStatus=30` despite read count
   1, so the hook needs receipt-aware state rather than only rereading status.
   No new Android Expo release runtime claim was made. See the
-  [follow-up results](STATUS_SESSION_2.md#android-follow-up-at-d2d667f-november-2122-utc).
+  [follow-up results](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/STATUS_SESSION_2.md#android-follow-up-at-d2d667f-november-2122-utc).
 
 - At `ec16c9f` (`3c8c76c` X3 fix plus docs), the paired X3 retest passed:
   Android received exactly one matching iOS read receipt and the open bubble
   changed from Sent to Read within one second without Refresh, reconnecting
   or reopening, and stayed Read after reopening. The SDK still reports
   `sentStatus=30`, so Read comes from stored receipt counts. See the
-  [X3 retest](STATUS_SESSION_2.md#x3-retest-at-ec16c9f-november-22-utc).
+  [X3 retest](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/STATUS_SESSION_2.md#x3-retest-at-ec16c9f-november-22-utc).
 
 - At `a7b4b31`, the Mac reran the iOS regressions on the X3 fix. All of them passed: T9/T10 recall, X6, R4 in Debug and Release, T12, R3–R5, and iOS receipts. See the
-  [iOS pre-merge regression](STATUS_SESSION_2.md#ios-pre-merge-regression-at-a7b4b31-november-22-utc).
+  [iOS pre-merge regression](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/STATUS_SESSION_2.md#ios-pre-merge-regression-at-a7b4b31-november-22-utc).
 
 - At `d2d667f`, the Mac passed the iOS CLI and Expo Release builds, T9/T10
   account-switch recall, T12 (typing, JS reload, live and offline delivery),
   the iOS sender edit, and Release R3–R5. The Release sender image now appears
   during upload without Refresh. See the
-  [iOS follow-up](STATUS_SESSION_2.md#ios-follow-up-at-d2d667f-november-2122-utc).
+  [iOS follow-up](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/STATUS_SESSION_2.md#ios-follow-up-at-d2d667f-november-2122-utc).
 
 ## React hooks branch (`feat/react-hooks`, JavaScript only)
 
 Verified on the dev Mac on 22 November 2026 (Node 24.22.2, macOS arm64). Not
 run on devices yet; device rows H1–H11 are in
-[cloud session 4](CLOUD_SESSION_4.md).
+[cloud session 4](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_SESSION_4.md).
 
 | Check | Result |
 | --- | --- |
@@ -224,8 +224,8 @@ churn leaves `client.listenerCount()` at its baseline.
 
 Branch `feat/push-and-sdk-fixes` (PR #5, based on `main`) changes native code that
 has not been compiled. Build both platforms, then run the rows in
-[cloud session 3](CLOUD_SESSION_3.md): C1–C6 for the code fixes and P1–P7
-from [PUSH.md](PUSH.md), which need physical devices.
+[cloud session 3](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_SESSION_3.md): C1–C6 for the code fixes and P1–P7
+from [PUSH.md](../guide/push.md), which need physical devices.
 
 Results at `b025132`: on the Mac, B1 passed (71/71 JS tests, typecheck, lint
 with 0 errors). B3 CLI failed (Xcode 26.6, iOS 26.5 simulator SDK, exit 65)
@@ -249,7 +249,7 @@ Sent → Read passes (under 398 ms after the receipt, no Refresh), and one
 image each way downloads (iOS → Android byte-identical PNG; Android → iOS
 JPEG because the demo doesn't request `original: true`). Physical push
 P1–P7 was not run (no FCM, APNs or signed device build). Details:
-[cloud session 3 results](CLOUD_SESSION_3.md#android-ubuntu).
+[cloud session 3 results](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_SESSION_3.md#android-ubuntu).
 
 iOS results (Mac, `3fe30a3`, Xcode 26.6, iOS 26.5 simulators): B3 (CLI and
 Expo Release) and B4 pass; `NexconnPush.swift` and the CLI AppDelegate's
@@ -259,7 +259,7 @@ double open, but the Playground log keeps no `notificationOpened` line and the
 cold path emits no generic event. C4 fails on iOS: an extra-only
 `setMemberInfo` clears the member's nickname on the server, because the iOS
 bridge omits it. C5 is blocked (no room ID, 23410). Physical push P1–P7 was not
-run. Details: [cloud session 3 results](CLOUD_SESSION_3.md#ios-mac).
+run. Details: [cloud session 3 results](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_SESSION_3.md#ios-mac).
 
 Follow-up after these results (needs re-verification):
 - **C4 iOS:** fixed in source. The iOS bridge now re-reads the member and
@@ -272,9 +272,9 @@ Follow-up after these results (needs re-verification):
   survives navigation, and the criterion now describes routing.
 - **C5:** still blocked until a room ID is available.
 
-See the [follow-up table](CLOUD_SESSION_3.md#follow-up-fixes-after-the-results).
+See the [follow-up table](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/CLOUD_SESSION_3.md#follow-up-fixes-after-the-results).
 
-The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
+The [session 2 results](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/docs/internal/STATUS_SESSION_2.md) distinguish what's verified
 in this run from previous revisions. They do not establish full
 L1–L16 device coverage, official-client interoperability, or physical-device
 push; FCM and physical push were out of scope.
@@ -312,7 +312,7 @@ push; FCM and physical push were out of scope.
 - Push: builds pass on both platforms and simulator/emulator rows C1–C3
   ran; delivery on physical devices (P1–P7) has not been tested. Flutter-only APIs with
   no native 26.4.2 equivalent (`destroy`, runtime `setLogLevel`, group
-  `setRemark`) are not available ([FLUTTER_PARITY.md](FLUTTER_PARITY.md)).
+  `setRemark`) are not available ([FLUTTER_PARITY.md](flutter.md)).
 - Rendered hook tests run against the mock transport (`tests/react`). They
   don't replace device runs of the same flows.
 - `useMessages().retry` is offered only after the SDK's stored copy reports

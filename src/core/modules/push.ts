@@ -45,7 +45,7 @@ const MAX_SEEN = 64;
 /**
  * Push notifications: permission, token, notification taps and arrival.
  *
- * Native setup is still required (see docs/PUSH.md): APNs entitlement and
+ * Native setup is still required (see docs/guide/push.md): APNs entitlement and
  * AppDelegate token forwarding on iOS; `ai.nexconn.chat:push-fcm` and
  * Firebase configuration on Android. These methods work before
  * `initialize()`.

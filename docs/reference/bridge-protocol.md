@@ -11,7 +11,7 @@ readonly onNativeEvent: CodegenTypes.EventEmitter<string>;
 ## Invocation
 
 - `method` is a dotted name (`engine.connect`, `message.send`, ...). The full
-  list is generated into docs/PARITY.md; `engine.getCapabilities` returns the
+  list is generated into docs/reference/parity.md; `engine.getCapabilities` returns the
   set implemented on the running platform.
 - `argsJson` is a JSON object. Absent keys mean "SDK default".
 - Success resolves with `{"v": <result>}` (so `null`/primitives are explicit).
@@ -42,7 +42,7 @@ Envelope: `{"type","generation","opId?","payload"}`.
   ignores handler events whose generation is older than the current one
   (connection-status events are always delivered).
 - Handlers are registered once per process at `engine.initialize` with the
-  identifier `react-native-nexconn`; the module only attaches/detaches the
+  identifier `@subramanyarao11/react-native-nexconn`; the module only attaches/detaches the
   JS emitter, so a JS reload does not duplicate handlers.
 
 ## Resource handles

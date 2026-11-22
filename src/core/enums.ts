@@ -4,7 +4,7 @@
  * The bridge transports native raw integer values. These values were read
  * from the pinned native artifacts (Android `ai.nexconn.chat:chat:26.4.2`
  * enum constructors and iOS `NexconnChatSDK 26.4.2` Swift raw values) and are
- * identical on both platforms unless noted. See docs/API_INVENTORY.md.
+ * identical on both platforms unless noted. See docs/reference/parity.md.
  */
 
 export const ChannelType = {

@@ -37,7 +37,7 @@ node examples/token-server/server.mjs   # listens on :8787
 
 From an Android emulator the host is `http://10.0.2.2:8787`; from the iOS
 simulator it is `http://localhost:8787`. See
-[examples/token-server/README.md](../examples/token-server/README.md).
+[examples/token-server/README.md](https://github.com/Subramanyarao11/react-native-nexconn/blob/main/examples/token-server/README.md).
 
 ## 3a. Community CLI app (React Native 0.88, New Architecture)
 
@@ -49,7 +49,7 @@ cd ios && pod install && cd ..
 ```
 
 Autolinking registers the TurboModule. The Android library adds Nexconn's
-Maven repository automatically; see [API.md](API.md#install) to opt out or
+Maven repository automatically; see [API.md](api.md#install) to opt out or
 pin SDK versions.
 
 ```sh
@@ -72,7 +72,7 @@ Add the config plugin to `app.json`:
 {
   "expo": {
     "plugins": [
-      ["react-native-nexconn", {
+      ["@subramanyarao11/react-native-nexconn", {
         "android": { "fcm": false, "notificationIntentFilters": true },
         "ios": { "pushNotifications": false }
       }]
@@ -96,12 +96,12 @@ provider then trades it for a Nexconn token:
 ```tsx
 import { useState } from 'react';
 import { Button, FlatList, Text, TextInput, View } from 'react-native';
-import { AreaCode, ChannelType, getNexconnClient } from 'react-native-nexconn';
+import { AreaCode, ChannelType, getNexconnClient } from '@subramanyarao11/react-native-nexconn';
 import {
   NexconnProvider,
   useConnection,
   useMessages,
-} from 'react-native-nexconn/react';
+} from '@subramanyarao11/react-native-nexconn/react';
 
 const client = getNexconnClient();
 const TOKEN_SERVER = 'http://10.0.2.2:8787';
@@ -180,8 +180,8 @@ apps use.
 
 ## Next steps
 
-- [REACT.md](REACT.md): every hook and how it stays current.
-- [API.md](API.md): the headless client, modules, events and errors.
-- [PUSH.md](PUSH.md): push notifications (FCM and APNs), permission and
+- [REACT.md](react.md): every hook and how it stays current.
+- [API.md](api.md): the headless client, modules, events and errors.
+- [PUSH.md](push.md): push notifications (FCM and APNs), permission and
   tap routing. Push needs physical devices to verify.
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md): common build and runtime errors.
+- [TROUBLESHOOTING.md](troubleshooting.md): common build and runtime errors.

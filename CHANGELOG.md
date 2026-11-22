@@ -1,12 +1,32 @@
 # Changelog
 
-This package is private and unreleased. Versions are not published yet, so
-entries are grouped by milestone. Native results are listed only where a
-cloud session verified them (see docs/STATUS.md).
+Native results are listed only where a cloud test session verified them
+(see docs/reference/status.md). Before 0.1.0-beta.0 the project was developed
+privately, so earlier entries are grouped by milestone.
 
 ## Unreleased
 
-### Added
+## 0.1.0-beta.0
+
+First public release, published to npm as
+`@subramanyarao11/react-native-nexconn` under the MIT license.
+
+### Push notifications (PR #5)
+
+- `client.push`: permission, token, initial notification, tap routing
+  (`onNotificationOpened`, `useNotificationOpened`), clearing notifications.
+  Android installs its listener at process start; iOS has AppDelegate
+  helpers. Builds pass on both platforms, and simulator taps route warm and
+  cold. Delivery on physical devices has not been tested.
+- `refreshReferenceMessages` times out (`timedOut: true`). Android
+  `openChannels.enter` resolves with the enter response. Android accepts
+  `file://` paths and copies `content://` URIs. An extra-only
+  `setMemberInfo` keeps the nickname (verified on Android; the iOS fix needs
+  re-verification).
+
+### React layer (PR #6)
+
+#### Added
 
 - React hooks:
   - Groups: `useGroup`, `useGroupMembers` and `useJoinedGroups`.
@@ -35,7 +55,7 @@ cloud session verified them (see docs/STATUS.md).
 - Docs: QUICKSTART, REACT (hooks reference), TROUBLESHOOTING, SECURITY and
   this changelog.
 
-### Changed
+#### Changed
 
 - `useMessages` and `useChannelList` keep their data through a network drop
   and revalidate after reconnecting. `useMessages` also revalidates when

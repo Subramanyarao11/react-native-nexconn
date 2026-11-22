@@ -66,7 +66,7 @@ errors and tap routing from locally posted notifications.
 2. Dependencies. The Expo plugin does this with
    `"android": { "fcm": true }`; for CLI apps add them by hand:
 
-   ```gradle
+   ```groovy
    // android/build.gradle (buildscript dependencies)
    classpath("com.google.gms:google-services:4.4.2")
    // android/app/build.gradle

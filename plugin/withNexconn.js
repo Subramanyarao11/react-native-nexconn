@@ -3,7 +3,7 @@
  * cannot load the native SDK).
  *
  * Usage in app.json:
- *   "plugins": [["react-native-nexconn", {
+ *   "plugins": [["@subramanyarao11/react-native-nexconn", {
  *     "android": { "fcm": true, "notificationIntentFilters": true },
  *     "ios": { "pushNotifications": true, "apsEnvironment": "development" },
  *     "sdkVersion": "26.4.2"

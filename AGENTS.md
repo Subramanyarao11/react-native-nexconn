@@ -1,7 +1,7 @@
 # Project instructions
 
-Build the full community React Native Chat SDK described in docs/BUILD_PLAN.md.
-Read docs/STATUS.md before working; update it with verified results and limits.
+Build the full community React Native Chat SDK described in docs/internal/BUILD_PLAN.md.
+Read docs/reference/status.md before working; update it with verified results and limits.
 
 ## Required skills
 
@@ -21,9 +21,10 @@ Read docs/STATUS.md before working; update it with verified results and limits.
 - Prefer official Nexconn native dependencies. Evaluate RongCloud only against
   real Nexconn credentials, regions, payloads and feature availability.
 - Never copy Nexconn's Flutter source or vendor SDK binaries into this package.
-- Keep the repository and npm package private. Do not publish, change visibility,
-  finalize licensing, contact the vendor, or claim official endorsement.
-- Original source licensing is unresolved. Preserve upstream notices.
+- The project is MIT licensed and published to npm as
+  `@subramanyarao11/react-native-nexconn`. Releases are made by the maintainer;
+  agents don't publish, tag releases, change repository settings or contact
+  the vendor. Never claim official endorsement.
 - Never commit credentials, token values, private device configuration, build
   products or node_modules. App Secret belongs on an authenticated backend.
 - No fake chat success: mark unimplemented capabilities honestly. A linked native

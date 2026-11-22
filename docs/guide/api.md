@@ -9,17 +9,17 @@ Entry points:
 
 | Import | Contents |
 | --- | --- |
-| `react-native-nexconn` | Headless client, enums, models, errors |
-| `react-native-nexconn/react` | `NexconnProvider` and hooks |
-| `react-native-nexconn/testing` | `MockTransport`, `createMockClient`, fixtures |
-| `react-native-nexconn/app.plugin.js` | Expo config plugin (development builds) |
+| `@subramanyarao11/react-native-nexconn` | Headless client, enums, models, errors |
+| `@subramanyarao11/react-native-nexconn/react` | `NexconnProvider` and hooks |
+| `@subramanyarao11/react-native-nexconn/testing` | `MockTransport`, `createMockClient`, fixtures |
+| `@subramanyarao11/react-native-nexconn/app.plugin.js` | Expo config plugin (development builds) |
 
 ## Install
 
 Community CLI (RN 0.88, New Architecture):
 
 ```sh
-npm install react-native-nexconn   # private package: install from the packed .tgz
+npm install @subramanyarao11/react-native-nexconn   # private package: install from the packed .tgz
 cd ios && pod install              # pulls NexconnChat/Chat from CocoaPods trunk
 ```
 
@@ -33,7 +33,7 @@ and `$NexconnChatVersion` or `NEXCONN_CHAT_VERSION` (iOS).
 Expo (SDK 58 development build; Expo Go is not supported):
 
 ```json
-{ "expo": { "plugins": [["react-native-nexconn", {
+{ "expo": { "plugins": [["@subramanyarao11/react-native-nexconn", {
   "android": { "fcm": false, "notificationIntentFilters": true },
   "ios": { "pushNotifications": false },
   "sdkVersion": "26.4.2"
@@ -45,7 +45,7 @@ Then `npx expo prebuild` and `npx expo run:android` / `npx expo run:ios`.
 ## Lifecycle
 
 ```ts
-import { AreaCode, getNexconnClient } from 'react-native-nexconn';
+import { AreaCode, getNexconnClient } from '@subramanyarao11/react-native-nexconn';
 
 const client = getNexconnClient();         // process-wide (the native SDK is a singleton)
 await client.initialize({ appKey, areaCode: AreaCode.sg });
@@ -186,7 +186,7 @@ can be live; queries end with the session.
 
 `client.on(name, listener)` returns an idempotent unsubscribe. 62 native
 handler callbacks map to typed events (see `NexconnEventMap` and
-docs/PARITY.md), e.g. `connectionStatusChanged`, `messageReceived`,
+docs/reference/parity.md), e.g. `connectionStatusChanged`, `messageReceived`,
 `offlineMessageSyncCompleted`, `messagesUpdated`, `messagesDeleted`,
 `readReceiptResponse`, `typingStatusChanged`, `channelPinnedSync`,
 `groupOperation`, `openChannelEntered`, `translationCompleted`,
@@ -215,7 +215,7 @@ model arrive as `unknownNativeEvent` rather than being dropped.
 
 Hooks reset when the user or session generation changes. They keep their
 data through network drops and revalidate after reconnecting. See
-[REACT.md](REACT.md) for each hook's behaviour.
+[REACT.md](react.md) for each hook's behaviour.
 
 Content helpers in the main entry point are `replyTo(message, text)`,
 `withMentions(content, userIds | 'all')` and `mentionsUser(message, userId)`.
@@ -235,7 +235,7 @@ running platform; `client.supports('group.addManagers')` checks one.
 ## Testing your app
 
 ```ts
-import { createMockClient, fixtures } from 'react-native-nexconn/testing';
+import { createMockClient, fixtures } from '@subramanyarao11/react-native-nexconn/testing';
 const { client, transport } = createMockClient();
 transport.on('engine.initialize', () => ({ alreadyInitialized: false, platform: 'android', sdkVersion: 'test' }));
 transport.emit('MessageHandler.onMessageReceived', { message: fixtures.textMessage() });
@@ -258,5 +258,5 @@ payloads from `expo-notifications` and similar), `clearNotifications`,
 `notificationReceived`, `pushTokenReceived`, `pushTokenError`,
 `pushTokenReportResult` (Android). React: `useNotificationOpened`.
 
-Native setup (FCM, APNs, AppDelegate) is in [PUSH.md](PUSH.md). None of the
+Native setup (FCM, APNs, AppDelegate) is in [PUSH.md](push.md). None of the
 push path has been verified on a physical device yet.

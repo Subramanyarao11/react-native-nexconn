@@ -9,7 +9,7 @@ import {
   withMentions,
   mentionsUser,
   type Message,
-} from 'react-native-nexconn';
+} from '@subramanyarao11/react-native-nexconn';
 import {
   NexconnProvider,
   useMessages,
@@ -32,8 +32,8 @@ import {
   sendStateOf,
   type MessageSendState,
   type UsePagedListResult,
-} from 'react-native-nexconn/react';
-import { createMockClient } from 'react-native-nexconn/testing';
+} from '@subramanyarao11/react-native-nexconn/react';
+import { createMockClient } from '@subramanyarao11/react-native-nexconn/testing';
 const client = getNexconnClient();
 const channel = { channelType: ChannelType.direct, channelId: 'bob' };
 export async function demo(): Promise<Message> {

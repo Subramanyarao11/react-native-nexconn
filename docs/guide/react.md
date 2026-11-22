@@ -1,11 +1,11 @@
 # React hooks
 
-`react-native-nexconn/react` wraps the headless client in hooks. React is a
+`@subramanyarao11/react-native-nexconn/react` wraps the headless client in hooks. React is a
 peer dependency; nothing here depends on Expo.
 
 ```tsx
-import { getNexconnClient } from 'react-native-nexconn';
-import { NexconnProvider } from 'react-native-nexconn/react';
+import { getNexconnClient } from '@subramanyarao11/react-native-nexconn';
+import { NexconnProvider } from '@subramanyarao11/react-native-nexconn/react';
 
 <NexconnProvider client={getNexconnClient()}>
   <App />
@@ -101,7 +101,7 @@ const {
 Mentions and replies can also be built with core helpers:
 
 ```ts
-import { mentionsUser, replyTo, withMentions } from 'react-native-nexconn';
+import { mentionsUser, replyTo, withMentions } from '@subramanyarao11/react-native-nexconn';
 
 send(withMentions({ type: 'text', text: '@bob @carol ship it' }, ['bob', 'carol']));
 send(withMentions({ type: 'text', text: 'standup now' }, 'all'));
@@ -144,7 +144,7 @@ mentionsUser(message, myUserId); // direct or @all
 
 ## Testing components that use these hooks
 
-The hooks run against `createMockClient()` from `react-native-nexconn/testing`.
+The hooks run against `createMockClient()` from `@subramanyarao11/react-native-nexconn/testing`.
 This repository's own rendered tests (`tests/react`) use React Native
 Testing Library 14 with Jest 29 and `@react-native/jest-preset`, and
 `tests/react/harness.tsx` shows how to script paged queries and connection
@@ -152,8 +152,8 @@ changes.
 
 ```tsx
 import { renderHook } from '@testing-library/react-native';
-import { createMockClient } from 'react-native-nexconn/testing';
-import { NexconnProvider, useMessages } from 'react-native-nexconn/react';
+import { createMockClient } from '@subramanyarao11/react-native-nexconn/testing';
+import { NexconnProvider, useMessages } from '@subramanyarao11/react-native-nexconn/react';
 
 const { client, transport } = createMockClient();
 const wrapper = ({ children }) => (
