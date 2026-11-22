@@ -214,10 +214,14 @@ export class NexconnClient {
     if (this.initPromise) return this.initPromise;
     const pending = this.bridge
       .invoke('engine.initialize', compact({ ...options }))
-      .then((raw) => {
+      .then(async (raw) => {
         const record = isRecord(raw) ? raw : {};
         this.initializedAppKey = options.appKey;
         this.update({ initialized: true });
+        if (record.alreadyInitialized === true) {
+          // JS reload: the native SDK kept its session; adopt it.
+          await this.restoreSession().catch(() => undefined);
+        }
         return {
           alreadyInitialized: record.alreadyInitialized === true,
           platform: record.platform === 'ios' ? 'ios' : 'android',
@@ -302,6 +306,35 @@ export class NexconnClient {
       generation: this.bridge.generation,
       connectionStatus: ConnectionStatus.unconnected,
     });
+  }
+
+  /**
+   * Reads the native session (which survives JS reloads) and adopts it:
+   * initialized flag, connection status, current user and generation.
+   * Safe to call at any time; does nothing if the SDK is not initialized.
+   */
+  async restoreSession(): Promise<ClientSnapshot> {
+    const raw = await this.bridge.invoke('engine.getSessionState');
+    const record = isRecord(raw) ? raw : {};
+    if (record.initialized !== true) return this.snapshot;
+    if (typeof record.generation === 'number') {
+      this.bridge.setGeneration(record.generation);
+    }
+    const status =
+      typeof record.connectionStatus === 'number'
+        ? (record.connectionStatus as ConnectionStatus)
+        : this.snapshot.connectionStatus;
+    const userId =
+      typeof record.userId === 'string' && record.userId.length > 0
+        ? record.userId
+        : undefined;
+    this.update({
+      initialized: true,
+      connectionStatus: status,
+      userId: userId ?? this.snapshot.userId,
+      generation: this.bridge.generation,
+    });
+    return this.snapshot;
   }
 
   async getConnectionStatus(): Promise<ConnectionStatus> {

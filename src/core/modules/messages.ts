@@ -452,7 +452,10 @@ export class MessagesModule {
     });
   }
 
-  /** iOS only: downloads an arbitrary media URL into the SDK cache. */
+  /**
+   * Downloads a media URL to a local file and resolves with its path (iOS:
+   * SDK cache; Android: `<cacheDir>/nexconn-media`).
+   */
   async downloadMediaUrl(
     url: string,
     fileName: string,
@@ -479,7 +482,7 @@ export class MessagesModule {
     }
   }
 
-  /** iOS only. */
+  /** Cancels a `downloadMediaUrl` download. */
   cancelDownloadMediaUrl(url: string): Promise<void> {
     return this.bridge.invoke('message.cancelDownloadMediaUrl', {
       url: requireString(url, 'url'),

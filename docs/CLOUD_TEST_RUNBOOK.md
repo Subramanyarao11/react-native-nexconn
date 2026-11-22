@@ -34,7 +34,7 @@ credentials and physical devices.
 bash scripts/cloud/verify-js.sh
 ```
 
-Runs: immutable install, 49 unit/contract/plugin tests, TypeScript, ESLint,
+Runs: immutable install, 53 unit/contract/plugin tests, TypeScript, ESLint,
 Bob build, Codegen schema + spec generation for both platforms, `yarn pack`
 (fails if vendor binaries are packed). Already passing on the dev Mac except
 the Codegen-generation and pack steps, which were run separately and passed.
@@ -133,6 +133,10 @@ L16 from the live checklist against it.
 
 ## Next cloud session (planned)
 
+Superseded by [cloud session 2](CLOUD_SESSION_2.md), which adds the
+fixes from the first iOS run, Expo release builds and Android ↔ iOS chat.
+
+
 Status at handover (18 November 2026): JS, Android CLI/Expo debug + CLI
 release, packed consumers on Android and the live token test have passed on
 Ubuntu (see STATUS.md). iOS (`verify-ios.sh`) is running on the macOS VM.
@@ -166,11 +170,11 @@ as user A on one device/simulator and user B on another.
 | L4 | Read receipt | B opens chat → A gets `readReceiptResponse` | both |
 | L5 | Typing | B types → A sees "typing…" | both |
 | L6 | Image + file send with progress | progress events then sent; B can `downloadMedia` | both |
-| L7 | Recall (long-press) and edit (`messages.update`) | B sees recall notification / `messagesUpdated` | both |
+| L7 | Recall (long-press) and edit (`messages.update`) | A sees `[message recalled]` at once; B sees it if the SDK keeps a recall notice (otherwise the message is removed — record which); edit arrives as `messagesUpdated` | both |
 | L8 | Create group with A, B; send in group | group appears in both lists; `groupOperation` event | both |
 | L9 | Offline delivery | B disconnects, A sends 3 messages, B reconnects → messages + `offlineMessageSyncCompleted` | both |
 | L10 | Account switch | Disconnect A, connect B on same device → no A data/events remain | both |
-| L11 | JS reload while connected | No duplicate events; `initialize` returns `alreadyInitialized: true` | both |
+| L11 | JS reload while connected | App returns to Chats (not Sign in) with the same user and generation; one copy of each later event; `initialize` returns `alreadyInitialized: true` | both |
 | L12 | Kicked by other client | Connect A on two devices → first gets `kickedOfflineByOtherClient` | both |
 | L13 | Custom message | Register `app:poll` on both, send, receive `custom` content | both |
 | L14 | Interop with official client | Exchange with a Nexconn sample app or Web demo | one platform |

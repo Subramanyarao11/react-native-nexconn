@@ -77,6 +77,10 @@ public final class NexconnBridge: NSObject {
   private var initializedAppKey: String?
   private var generation = 0
   private var connecting = false
+  /// Arguments of the first successful initialize, reused to re-initialize.
+  private var initArgs: Args?
+  /// Set by disconnect: the next connect re-initializes the SDK first.
+  private var engineNeedsRefresh = false
   private let callbackQueue = DispatchQueue(label: "ai.nexconn.reactnative.callbacks")
 
   private typealias Loader = (@escaping ([Any], Int?, Bool?, NCError?) -> Void) -> Void
@@ -178,11 +182,17 @@ public final class NexconnBridge: NSObject {
     let targets = Array(emitters.values)
     let gen = generation
     stateLock.unlock()
+    // Trace every SDK callback (type only, never payloads) so a missing JS
+    // event can be located in the Xcode/simulator log ("NexconnBridge").
+    if opId == nil { NSLog("NexconnBridge sdk event %@ gen=%ld js=%@", type as NSString, gen, (targets.isEmpty ? "no" : "yes") as NSString) }
     guard !targets.isEmpty else { return }
     var envelope: [String: Any] = ["type": type, "generation": gen, "payload": NexconnSerializer.encode(payload)]
     if let opId = opId { envelope["opId"] = opId }
     guard let data = try? JSONSerialization.data(withJSONObject: envelope),
-          let json = String(data: data, encoding: .utf8) else { return }
+          let json = String(data: data, encoding: .utf8) else {
+      NSLog("NexconnBridge dropped %@: serialization failed", type as NSString)
+      return
+    }
     targets.forEach { $0(json) }
   }
 
@@ -498,13 +508,16 @@ public final class NexconnBridge: NSObject {
     }
   }
 
-  private func withMessage(_ ref: Args, _ c: Call, _ block: @escaping (Message) throws -> Void) {
+  /// Resolves a JS message reference. Operations use the cached instance when
+  /// available; `fresh` lookups (`message.getById`) always ask the SDK so
+  /// callers see recalls/edits applied after caching.
+  private func withMessage(_ ref: Args, _ c: Call, fresh: Bool = false, _ block: @escaping (Message) throws -> Void) {
     let clientId = ref.int64("clientId").flatMap { $0 > 0 ? $0 : nil }
     let messageId = ref.str("messageId").flatMap { $0.isEmpty ? nil : $0 }
     guard clientId != nil || messageId != nil else {
       return c.reject(BridgeError.invalid("message needs clientId or messageId"))
     }
-    if let cached = cachedMessage(clientId: clientId, messageId: messageId) {
+    if !fresh, let cached = cachedMessage(clientId: clientId, messageId: messageId) {
       return guarded(c) { try block(cached) }
     }
     let params = clientId.map { GetMessageByIdParams(messageClientId: $0) } ?? GetMessageByIdParams(messageId: messageId ?? "")
@@ -529,6 +542,20 @@ public final class NexconnBridge: NSObject {
   }
 
   // MARK: - engine.*
+
+  private func makeInitParams(_ a: Args) throws -> InitParams {
+    let params = InitParams(appKey: try a.reqStr("appKey"))
+    if let raw = a.int("areaCode") { params.areaCode = try enumValue(AreaCode.self, raw, "areaCode") }
+    if let navi = a.str("naviServer") { params.naviServer = navi }
+    if let raw = a.int("logLevel") { params.logLevel = try enumValue(LogLevel.self, raw, "logLevel") }
+    if let v = a.bool("enableSyncEmptyTopConversation") { params.enableSyncEmptyTopConversation = v }
+    if let v = a.bool("forceKeepAlive") { params.forceKeepAlive = v }
+    if let v = a.bool("crashMonitorEnabled") { params.crashMonitorEnabled = v }
+    if let o = a.dict("compressOptions") { params.compressOptions = self.compressOptions(o) }
+    // Deliver SDK callbacks off the main thread; serialization happens there.
+    params.callbackQueue = self.callbackQueue
+    return params
+  }
 
   private func registerHandlers() {
     let id = Self.handlerId
@@ -562,21 +589,13 @@ public final class NexconnBridge: NSObject {
         self.registerHandlers()
         return c.resolve(["alreadyInitialized": true, "platform": "ios", "sdkVersion": NCEngine.getVersion()])
       }
-      let params = InitParams(appKey: appKey)
-      if let raw = a.int("areaCode") { params.areaCode = try enumValue(AreaCode.self, raw, "areaCode") }
-      if let navi = a.str("naviServer") { params.naviServer = navi }
-      if let raw = a.int("logLevel") { params.logLevel = try enumValue(LogLevel.self, raw, "logLevel") }
-      if let v = a.bool("enableSyncEmptyTopConversation") { params.enableSyncEmptyTopConversation = v }
-      if let v = a.bool("forceKeepAlive") { params.forceKeepAlive = v }
-      if let v = a.bool("crashMonitorEnabled") { params.crashMonitorEnabled = v }
-      if let o = a.dict("compressOptions") { params.compressOptions = self.compressOptions(o) }
-      // Deliver SDK callbacks off the main thread; serialization happens there.
-      params.callbackQueue = self.callbackQueue
+      let params = try self.makeInitParams(a)
       NCEngine.initialize(params)
       // Handlers are registered before any connect so offline messages are not missed.
       self.registerHandlers()
       self.stateLock.lock()
       self.initializedAppKey = appKey
+      self.initArgs = a
       self.stateLock.unlock()
       c.resolve(["alreadyInitialized": false, "platform": "ios", "sdkVersion": NCEngine.getVersion()])
     }
@@ -593,8 +612,19 @@ public final class NexconnBridge: NSObject {
       self.connecting = true
       self.generation += 1
       let gen = self.generation
+      let refreshArgs = self.engineNeedsRefresh ? self.initArgs : nil
+      self.engineNeedsRefresh = false
       self.stateLock.unlock()
       self.resetSession()
+      if let refreshArgs = refreshArgs, let refreshParams = try? self.makeInitParams(refreshArgs) {
+        // Account switch in the same process: after disconnect + connect the
+        // SDK stopped delivering MessageHandler.onMessageDeleted for recalls
+        // (cloud session 2, iOS F5). Re-initializing rebinds the SDK's
+        // low-level listeners to a fresh engine, as on a cold start.
+        NSLog("NexconnBridge re-initializing SDK before connect gen=%ld", gen)
+        NCEngine.initialize(refreshParams)
+        self.registerHandlers()
+      }
       let params = ConnectParams(token: token)
       if let t = a.int("timeout") { params.timeout = Int32(t) }
       if let v = a.bool("reconnectKickEnable") { params.reconnectKickEnable = v }
@@ -616,10 +646,22 @@ public final class NexconnBridge: NSObject {
       self.stateLock.lock()
       self.generation += 1
       let gen = self.generation
+      self.engineNeedsRefresh = true
       self.stateLock.unlock()
       self.resetSession()
       NCEngine.disconnect(disablePush: a.bool("disablePush") ?? false)
       c.resolve(["generation": gen])
+    }
+    on("engine.getSessionState") { [unowned self] _, c in
+      // Survives JS reloads (this object is process-wide). The SDK is only
+      // queried once it has been initialized.
+      let initialized = self.currentAppKey() != nil
+      c.resolve([
+        "initialized": initialized,
+        "connectionStatus": initialized ? (NCEngine.getConnectionStatus().rawValue as Any) : (NSNull() as Any),
+        "userId": initialized ? ((NCEngine.getCurrentUserId() ?? "") as Any) : (NSNull() as Any),
+        "generation": self.currentGeneration(),
+      ])
     }
     on("engine.getConnectionStatus") { _, c in c.resolve(NCEngine.getConnectionStatus().rawValue) }
     on("engine.getCurrentUserId") { _, c in c.resolve(NCEngine.getCurrentUserId()) }
@@ -905,7 +947,7 @@ public final class NexconnBridge: NSObject {
       params.afterCount = a.int("afterCount") ?? 10
       try self.channel(a.reqDict("channel")).getMessagesAroundTime(params: params, completion: self.result(c) as OperationHandler<[Message]>)
     }
-    on("message.getById") { [unowned self] a, c in self.withMessage(try a.reqDict("message"), c) { m in c.resolve(m) } }
+    on("message.getById") { [unowned self] a, c in self.withMessage(try a.reqDict("message"), c, fresh: true) { m in c.resolve(m) } }
     on("message.sendReadReceiptResponse") { [unowned self] a, c in
       try self.channel(a.reqDict("channel")).sendReadReceiptResponse(messageIds: try a.reqStrings("messageIds"), completion: self.errorHandler(c))
     }

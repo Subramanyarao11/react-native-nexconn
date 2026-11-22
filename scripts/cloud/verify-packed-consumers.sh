@@ -9,7 +9,11 @@ YARN="node $ROOT/.yarn/releases/yarn-4.18.1.cjs"
 WORK="${WORK:-$(mktemp -d)}"
 echo "Working in $WORK"
 
-(cd "$ROOT" && $YARN install --immutable && $YARN pack --out "$WORK/react-native-nexconn.tgz")
+# Build lib/ first: a clean checkout has no compiled output to pack.
+(cd "$ROOT" && $YARN install --immutable && $YARN build && $YARN pack --out "$WORK/react-native-nexconn.tgz")
+TAR_LIST="$(tar -tzf "$WORK/react-native-nexconn.tgz")"
+grep -qxF "package/lib/module/index.js" <<<"$TAR_LIST" \
+  || { echo "Tarball is missing lib/module/index.js"; exit 1; }
 
 cat > "$WORK/consumer-check.tsx" <<'EOF'
 import { getNexconnClient, ChannelType, NexconnError, type Message } from 'react-native-nexconn';

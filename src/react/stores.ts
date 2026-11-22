@@ -1,4 +1,10 @@
-import type { Channel, ChannelIdentifier, Message } from '../core/types.ts';
+import type {
+  Channel,
+  ChannelIdentifier,
+  Message,
+  ReadReceiptInfo,
+} from '../core/types.ts';
+import { SentStatus } from '../core/enums.ts';
 
 export function sameChannel(
   a: ChannelIdentifier,
@@ -39,6 +45,47 @@ export class MessageListStore {
 
   get messages(): readonly Message[] {
     return this.items;
+  }
+
+  private receiptMap: ReadonlyMap<string, ReadReceiptInfo> = new Map();
+
+  /** Latest read-receipt counts per server `messageId` in this channel. */
+  get receipts(): ReadonlyMap<string, ReadReceiptInfo> {
+    return this.receiptMap;
+  }
+
+  /**
+   * Records genuine SDK read-receipt counts (from `readReceiptResponse` or
+   * `getReadReceiptInfo`) for messages in this channel. Counts never go
+   * backwards, so a late or reordered response cannot turn Read into Sent.
+   * Returns true if anything changed; the map is replaced, not mutated.
+   */
+  applyReceipts(infos: readonly ReadReceiptInfo[]): boolean {
+    let next: Map<string, ReadReceiptInfo> | undefined;
+    for (const info of infos) {
+      if (!info.messageId) continue;
+      if (info.channel && !sameChannel(info.channel, this.channel)) continue;
+      const current = (next ?? this.receiptMap).get(info.messageId);
+      if (
+        current &&
+        current.readCount >= info.readCount &&
+        current.totalCount === info.totalCount
+      ) {
+        continue;
+      }
+      const merged: ReadReceiptInfo = current
+        ? {
+            ...info,
+            readCount: Math.max(current.readCount, info.readCount),
+            unreadCount: Math.min(current.unreadCount, info.unreadCount),
+          }
+        : info;
+      next ??= new Map(this.receiptMap);
+      next.set(info.messageId, merged);
+    }
+    if (!next) return false;
+    this.receiptMap = next;
+    return true;
   }
 
   /** Inserts or replaces messages; returns true if anything changed. */
@@ -88,6 +135,27 @@ export class MessageListStore {
     return true;
   }
 
+  /**
+   * Reconciles the store with a fresh page of the newest messages from the
+   * SDK. Within the time window the page covers, sent messages the SDK no
+   * longer returns are removed and changed ones (edits, recall notices) are
+   * replaced. Unsent local echoes are kept. An empty page changes nothing.
+   */
+  reconcileWindow(page: readonly Message[]): boolean {
+    const mine = page.filter((m) => sameChannel(m.channel, this.channel));
+    if (mine.length === 0) return false;
+    const oldest = Math.min(...mine.map((m) => m.sentTime));
+    const present = new Set(mine.flatMap(messageKeys));
+    const stale = this.items.filter(
+      (m) =>
+        m.messageId !== undefined &&
+        m.sentTime >= oldest &&
+        !messageKeys(m).some((k) => present.has(k))
+    );
+    const removed = this.remove(stale);
+    return this.upsert(mine) || removed;
+  }
+
   reset(): void {
     this.items = [];
   }
@@ -129,4 +197,76 @@ function activity(c: Channel): number {
 function compareChannels(a: Channel, b: Channel): number {
   if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
   return activity(b) - activity(a);
+}
+
+/**
+ * Decides how to present messages reported as deleted. A recalled message
+ * may be replaced by a recall notification that the SDK keeps under the same
+ * server id; `lookup` asks the SDK for the current copy. Only an actual
+ * `recallNotification` returned by the SDK is shown — nothing is synthesized.
+ * Everything else is removed.
+ */
+export async function reconcileDeleted(
+  deleted: readonly Message[],
+  lookup: (ref: MessageLookupRef) => Promise<Message | undefined>
+): Promise<{ replacements: Message[]; removed: readonly Message[] }> {
+  const replacements: Message[] = [];
+  for (const message of deleted) {
+    const notice = await currentRecallNotice(message, lookup);
+    if (notice) replacements.push(notice);
+  }
+  return { replacements, removed: deleted };
+}
+
+/** Reference used to ask the SDK for the current copy of a message. */
+export type MessageLookupRef = { messageId: string; clientId?: number };
+
+/**
+ * Returns the recall notification the SDK holds for `message`: the message
+ * itself when it already carries one, otherwise a fresh SDK lookup by server
+ * id. Returns undefined when the SDK has none (never synthesized).
+ */
+export async function currentRecallNotice(
+  message: Message,
+  lookup: (ref: MessageLookupRef) => Promise<Message | undefined>
+): Promise<Message | undefined> {
+  if (message.content.type === 'recallNotification') return message;
+  if (!message.messageId) return undefined;
+  try {
+    const current = await lookup({
+      messageId: message.messageId,
+      ...(message.clientId > 0 ? { clientId: message.clientId } : {}),
+    });
+    return current?.content.type === 'recallNotification' ? current : undefined;
+  } catch {
+    return undefined; // not retrievable any more: a plain deletion
+  }
+}
+
+export interface MessageReadState {
+  /** Read by at least one recipient (direct: the peer has read it). */
+  readonly read: boolean;
+  /** Recipients who read it, when the SDK reported receipt counts. */
+  readonly readCount?: number;
+  /** Recipients expected to read it (group size minus sender). */
+  readonly totalCount?: number;
+}
+
+/**
+ * Read state of an outgoing message from the SDK's `sentStatus` and the
+ * receipt counts the SDK reported. Never invents a read: without a receipt
+ * or `sentStatus === read` it reports unread.
+ */
+export function readStateOf(
+  message: Message,
+  receipt: ReadReceiptInfo | undefined
+): MessageReadState {
+  if (receipt) {
+    return {
+      read: receipt.readCount > 0 || message.sentStatus === SentStatus.read,
+      readCount: receipt.readCount,
+      totalCount: receipt.totalCount,
+    };
+  }
+  return { read: message.sentStatus === SentStatus.read };
 }

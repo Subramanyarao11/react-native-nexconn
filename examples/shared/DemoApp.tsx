@@ -313,13 +313,27 @@ function Conversations({ onOpen }: { onOpen: (c: ChannelIdentifier) => void }) {
 // Chat
 // ---------------------------------------------------------------------------
 
+/** "read", or "read 2/5" in groups; empty when unread. */
+function readLabel(state: {
+  read: boolean;
+  readCount?: number;
+  totalCount?: number;
+}): string {
+  if (!state.read) return '';
+  return state.totalCount !== undefined && state.totalCount > 1
+    ? `read ${state.readCount ?? 0}/${state.totalCount}`
+    : 'read';
+}
+
 function MessageBubble({
   message,
   mine,
+  readLabel: read,
   onLongPress,
 }: {
   message: Message;
   mine: boolean;
+  readLabel: string;
   onLongPress: () => void;
 }) {
   return (
@@ -332,7 +346,9 @@ function MessageBubble({
       <Text style={styles.meta}>
         {new Date(message.sentTime).toLocaleTimeString()}
         {message.hasChanged ? ' · edited' : ''}
-        {mine ? ` · ${String(enumNameSafe(message.sentStatus))}` : ''}
+        {mine
+          ? ` · ${read && message.sentStatus >= 30 ? read : String(enumNameSafe(message.sentStatus))}`
+          : ''}
       </Text>
     </Pressable>
   );
@@ -359,7 +375,18 @@ function Chat({
 }) {
   const client = useNexconnClient();
   const { userId } = useConnection();
-  const { messages, loadOlder, send, loading, error } = useMessages(channel);
+  const {
+    messages,
+    receipts,
+    readState,
+    loadOlder,
+    send,
+    edit,
+    recall: recallMessage,
+    refresh,
+    loading,
+    error,
+  } = useMessages(channel);
   const typing = useTypingUsers(channel);
   const [text, setText] = useState('');
   const [mediaPath, setMediaPath] = useState('');
@@ -412,8 +439,8 @@ function Chat({
     if (!path) return;
     try {
       const isImage = /\.(jpe?g|png|heic|webp)$/i.test(path);
-      await client.messages.sendMedia(
-        channel,
+      // Through the hook so the sender's own bubble appears at once.
+      await send(
         isImage
           ? { type: 'image', localPath: path }
           : { type: 'file', localPath: path },
@@ -428,8 +455,22 @@ function Chat({
 
   const recall = async (message: Message) => {
     try {
-      await client.messages.deleteForAll(channel, message);
+      await recallMessage(message);
       setStatus('Recalled');
+    } catch (e) {
+      setStatus(describeError(e));
+    }
+  };
+
+  // Long-press on an own message: edit it with the composer text if there is
+  // any, otherwise recall it.
+  const onLongPressMessage = async (message: Message) => {
+    const body = text.trim();
+    if (!body || message.content.type !== 'text') return recall(message);
+    try {
+      await edit(message, { type: 'text', text: body });
+      setText('');
+      setStatus('Edited');
     } catch (e) {
       setStatus(describeError(e));
     }
@@ -443,6 +484,7 @@ function Chat({
           {channel.channelType === ChannelType.group ? '# ' : ''}
           {channel.channelId}
         </Text>
+        <Button title="Refresh" onPress={refresh} />
       </View>
       {typing.length > 0 ? (
         <Text style={styles.hint}>
@@ -453,12 +495,16 @@ function Chat({
       <FlatList
         inverted
         data={inverted}
+        extraData={receipts}
         keyExtractor={(m) => `${m.clientId}:${m.messageId ?? ''}`}
         renderItem={({ item }) => (
           <MessageBubble
             message={item}
             mine={item.senderUserId === userId}
-            onLongPress={() => recall(item)}
+            readLabel={
+              item.senderUserId === userId ? readLabel(readState(item)) : ''
+            }
+            onLongPress={() => onLongPressMessage(item)}
           />
         )}
         onEndReached={loadOlder}

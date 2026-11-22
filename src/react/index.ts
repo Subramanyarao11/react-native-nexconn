@@ -15,7 +15,11 @@ import {
   type ReactNode,
 } from 'react';
 import type { ClientSnapshot, NexconnClient } from '../core/client.ts';
-import { ConnectionStatus, type ChannelType } from '../core/enums.ts';
+import {
+  ConnectionStatus,
+  MessageDirection,
+  type ChannelType,
+} from '../core/enums.ts';
 import type {
   Channel,
   ChannelIdentifier,
@@ -24,29 +28,54 @@ import type {
   NexconnEventMap,
   NexconnEventName,
   OutgoingContent,
+  ReadReceiptInfo,
+  SendMediaCallbacks,
   SendOptions,
   TypingStatus,
 } from '../core/types.ts';
 import type { PagedQuery } from '../core/query.ts';
 import { isMediaContent } from '../core/encode.ts';
-import { ChannelListStore, MessageListStore, sameChannel } from './stores.ts';
+import {
+  ChannelListStore,
+  MessageListStore,
+  reconcileDeleted,
+  currentRecallNotice,
+  readStateOf,
+  sameChannel,
+  type MessageReadState,
+} from './stores.ts';
 
 export {
   ChannelListStore,
   MessageListStore,
+  reconcileDeleted,
+  currentRecallNotice,
   sameChannel,
   channelKey,
 } from './stores.ts';
+export type { MessageLookupRef } from './stores.ts';
 
 const ClientContext = createContext<NexconnClient | null>(null);
 
 export interface NexconnProviderProps {
   client: NexconnClient;
   children?: ReactNode;
+  /**
+   * Re-reads the native session on mount (default true), so a JS reload
+   * while the native SDK stays connected restores the signed-in state.
+   */
+  restoreSession?: boolean;
 }
 
 /** Makes a client available to the hooks below. */
-export function NexconnProvider({ client, children }: NexconnProviderProps) {
+export function NexconnProvider({
+  client,
+  children,
+  restoreSession = true,
+}: NexconnProviderProps) {
+  useEffect(() => {
+    if (restoreSession) client.restoreSession().catch(() => undefined);
+  }, [client, restoreSession]);
   return createElement(ClientContext.Provider, { value: client }, children);
 }
 
@@ -191,11 +220,39 @@ export function useChannelList(
 
 export interface UseMessagesResult extends AsyncState {
   messages: readonly Message[];
+  /**
+   * Read-receipt counts per `messageId`, from the SDK's receipt events and
+   * `getReadReceiptInfo`. The Android SDK reports receipts without updating
+   * the stored message's `sentStatus`, so render read state with
+   * `readState(message)` rather than `sentStatus` alone.
+   */
+  receipts: ReadonlyMap<string, ReadReceiptInfo>;
+  /** Read state of an outgoing message (`sentStatus` + receipt counts). */
+  readState: (message: Message) => MessageReadState;
   hasMore: boolean;
   /** Loads older history. */
   loadOlder: () => Promise<void>;
   /** Sends content, picking `send` or `sendMedia` automatically. */
-  send: (content: OutgoingContent, options?: SendOptions) => Promise<Message>;
+  send: (
+    content: OutgoingContent,
+    options?: SendOptions & Pick<SendMediaCallbacks, 'onProgress'>
+  ) => Promise<Message>;
+  /**
+   * Edits a sent message and shows the SDK's updated copy in this list
+   * immediately (the SDK does not always notify the editing client).
+   */
+  edit: (message: Message, content: OutgoingContent) => Promise<Message>;
+  /**
+   * Recalls a message for everyone. The recall notification returned by the
+   * SDK (if any) replaces the original in the list immediately.
+   */
+  recall: (message: Message) => Promise<Message | undefined>;
+  /**
+   * Re-reads the newest page from the SDK and reconciles the list (removed,
+   * edited and recalled messages). Use when the app may have missed a live
+   * event, e.g. on screen focus or pull-to-refresh.
+   */
+  refresh: () => Promise<void>;
 }
 
 /**
@@ -215,6 +272,9 @@ export function useMessages(
   const storeRef = useRef(new MessageListStore(channel));
   const queryRef = useRef<PagedQuery<Message> | undefined>(undefined);
   const [messages, setMessages] = useState<readonly Message[]>([]);
+  const [receipts, setReceipts] = useState<
+    ReadonlyMap<string, ReadReceiptInfo>
+  >(() => new Map());
   const [state, setState] = useState<AsyncState>({
     loading: false,
     error: undefined,
@@ -223,7 +283,39 @@ export function useMessages(
   const connected = snapshot.connectionStatus === ConnectionStatus.connected;
   const pageSize = options.pageSize ?? 30;
 
-  const publish = () => setMessages(storeRef.current.messages);
+  const publish = () => {
+    setMessages(storeRef.current.messages);
+    setReceipts(storeRef.current.receipts);
+  };
+
+  /**
+   * Seeds receipt counts for outgoing messages that asked for receipts, so a
+   * reopened chat shows Read even where the SDK keeps `sentStatus` at Sent.
+   * Best effort: a failure leaves the SDK's `sentStatus` as the only source.
+   */
+  const seedReceipts = useCallback(
+    (store: MessageListStore, page: readonly Message[]) => {
+      const ids = page
+        .filter(
+          (m) =>
+            m.direction === MessageDirection.send &&
+            m.needReceipt &&
+            m.messageId &&
+            !store.receipts.has(m.messageId)
+        )
+        .map((m) => m.messageId as string);
+      if (ids.length === 0) return;
+      client.messages
+        .getReadReceiptInfo(store.channel, ids)
+        .then((infos) => {
+          if (storeRef.current === store && store.applyReceipts(infos)) {
+            publish();
+          }
+        })
+        .catch(() => undefined);
+    },
+    [client]
+  );
 
   const loadOlder = useCallback(async () => {
     const query = queryRef.current;
@@ -233,16 +325,18 @@ export function useMessages(
       const page = await query.loadNextPage();
       if (queryRef.current !== query) return;
       if (storeRef.current.upsert(page.items)) publish();
+      seedReceipts(storeRef.current, page.items);
       setHasMore(query.hasMore);
       setState({ loading: false, error: undefined });
     } catch (error) {
       if (queryRef.current === query) setState({ loading: false, error });
     }
-  }, []);
+  }, [seedReceipts]);
 
   useEffect(() => {
     storeRef.current = new MessageListStore(channelRef.current);
     setMessages([]);
+    setReceipts(storeRef.current.receipts);
     setHasMore(true);
     if (!connected) return undefined;
     const query = client.messages.createMessagesQuery({
@@ -265,6 +359,32 @@ export function useMessages(
     const subs = [
       client.on('messageReceived', ({ message }) => upsert([message])),
       client.on('messagesUpdated', ({ messages: list }) => upsert(list)),
+      client.on('readReceiptResponse', ({ responses }) => {
+        const store = storeRef.current;
+        // Apply the SDK's receipt counts at once: on Android the stored
+        // message keeps sentStatus=Sent after a receipt.
+        if (store.applyReceipts(responses)) publish();
+        // Also adopt the stored copy in case the SDK did update it.
+        const known = new Set(
+          store.messages.flatMap((m) => (m.messageId ? [m.messageId] : []))
+        );
+        const ids = responses
+          .filter((r) => !r.channel || sameChannel(r.channel, store.channel))
+          .map((r) => r.messageId)
+          .filter((id) => known.has(id));
+        if (ids.length === 0) return;
+        Promise.all(
+          ids.map((messageId) =>
+            client.messages.getById({ messageId }).catch(() => undefined)
+          )
+        )
+          .then((fresh) => {
+            if (storeRef.current !== store) return;
+            const found = fresh.filter((m): m is Message => m !== undefined);
+            if (store.upsert(found)) publish();
+          })
+          .catch(() => undefined);
+      }),
       client.on(
         'messageMetadataUpdated',
         ({ message }) => message && upsert([message])
@@ -274,7 +394,16 @@ export function useMessages(
         ({ message }) => message && upsert([message])
       ),
       client.on('messagesDeleted', ({ messages: list }) => {
-        if (storeRef.current.remove(list)) publish();
+        const store = storeRef.current;
+        const mine = list.filter((m) => sameChannel(m.channel, store.channel));
+        if (mine.length === 0) return;
+        reconcileDeleted(mine, (ref) => client.messages.getById(ref))
+          .then(({ replacements, removed }) => {
+            if (storeRef.current !== store) return; // channel/session changed
+            const changed = store.remove(removed);
+            if (store.upsert(replacements) || changed) publish();
+          })
+          .catch(() => undefined);
       }),
       client.on('expiredMessagesDeleted', ({ messages: list }) => {
         if (storeRef.current.remove(list)) publish();
@@ -284,7 +413,10 @@ export function useMessages(
   }, [client, channelId]);
 
   const send = useCallback(
-    async (content: OutgoingContent, sendOptions?: SendOptions) => {
+    async (
+      content: OutgoingContent,
+      sendOptions?: SendOptions & Pick<SendMediaCallbacks, 'onProgress'>
+    ) => {
       const target = channelRef.current;
       const generation = client.getSnapshot().generation;
       const onAttached = (message: Message) => {
@@ -315,7 +447,95 @@ export function useMessages(
     [client]
   );
 
-  return { messages, hasMore, loadOlder, send, ...state };
+  const recall = useCallback(
+    async (message: Message) => {
+      const store = storeRef.current;
+      const returned = await client.messages.deleteForAll(
+        channelRef.current,
+        message
+      );
+      // Some SDK builds resolve with the original (emptied) message rather
+      // than the notice; then ask the SDK for its current copy. Content that
+      // is not a recall notification is never shown.
+      const notice = await currentRecallNotice(returned ?? message, (ref) =>
+        client.messages.getById(ref)
+      );
+      if (storeRef.current === store) {
+        const changed = store.remove([message]);
+        const added = notice !== undefined && store.upsert([notice]);
+        if (changed || added) publish();
+      }
+      return notice;
+    },
+    [client]
+  );
+
+  const refresh = useCallback(async () => {
+    const store = storeRef.current;
+    const query = client.messages.createMessagesQuery({
+      channel: channelRef.current,
+      pageSize,
+      isAscending: false,
+    });
+    try {
+      const page = await query.loadNextPage();
+      if (storeRef.current === store && store.reconcileWindow(page.items)) {
+        publish();
+      }
+      if (storeRef.current === store) seedReceipts(store, page.items);
+    } catch (error) {
+      if (storeRef.current === store) setState({ loading: false, error });
+    } finally {
+      query.release().catch(() => undefined);
+    }
+  }, [client, pageSize, seedReceipts]);
+
+  const edit = useCallback(
+    async (message: Message, content: OutgoingContent) => {
+      const store = storeRef.current;
+      if (!message.messageId) {
+        throw new TypeError(
+          'Only sent messages (with a messageId) can be edited'
+        );
+      }
+      const updated = await client.messages.update(
+        channelRef.current,
+        message.messageId,
+        content
+      );
+      // Prefer the SDK's stored copy (carries hasChanged/updateInfo).
+      const fresh = await client.messages
+        .getById({ messageId: message.messageId })
+        .catch(() => undefined);
+      if (storeRef.current === store && store.upsert([fresh ?? updated])) {
+        publish();
+      }
+      return fresh ?? updated;
+    },
+    [client]
+  );
+
+  const readState = useCallback(
+    (message: Message) =>
+      readStateOf(
+        message,
+        message.messageId ? receipts.get(message.messageId) : undefined
+      ),
+    [receipts]
+  );
+
+  return {
+    messages,
+    receipts,
+    readState,
+    hasMore,
+    loadOlder,
+    send,
+    edit,
+    recall,
+    refresh,
+    ...state,
+  };
 }
 
 /** Total unread count, refreshed on new messages and unread syncs. */

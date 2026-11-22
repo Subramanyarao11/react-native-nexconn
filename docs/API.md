@@ -120,7 +120,9 @@ await client.messages.sendMedia(channel, { type: 'image', localPath }, {
   `createReadReceiptUsersQuery`), metadata (`setMetadata`, `deleteMetadata`),
   `setReceivedStatus`, speech to text, stream messages, media download
   (`downloadMedia`, `pauseDownloadMedia`, `cancelDownloadMedia`,
-  `getMediaDownloadInfo`; iOS: `downloadMediaUrl`, `cancelDownloadMediaUrl`),
+  `getMediaDownloadInfo`, `downloadMediaUrl`, `cancelDownloadMediaUrl`; on
+  Android the URL download is implemented by the bridge, and `downloadMedia`
+  of an image falls back to it when the SDK reports nothing for 20 s),
   `refreshReferenceMessages`.
 
 ### Custom messages

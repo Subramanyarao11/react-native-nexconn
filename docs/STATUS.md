@@ -1,19 +1,19 @@
 # Implementation status
 
-Last updated 18 November 2026.
+Last updated 22 November 2026.
 
 ## Summary
 
 The SDK is **implemented at source level for the full public surface of the
 pinned Nexconn native SDKs** (Android `ai.nexconn.chat:chat:26.4.2`, iOS
 `NexconnChat/Chat 26.4.2`): 151 bridge methods, 18 paged query kinds and 62
-SDK event types, with 8 documented platform-only gaps (docs/PARITY.md).
+SDK event types, with 6 documented platform-only gaps (docs/PARITY.md).
 
-The Android bridge has compiled against the pinned SDK in both workspace
-fixtures. The example token server passed its live Nexconn API test, but the
-mobile SDK has not been run on a simulator/device or connected to Nexconn.
-The Swift bridge has not been compiled. See
-[the cloud runbook](CLOUD_TEST_RUNBOOK.md) for the verification steps.
+Both native bridges have connected to Nexconn from the CLI fixtures on
+Android emulators and an iOS simulator. The Android CLI and Expo fixtures
+also build with R8. See [the session 2 results](STATUS_SESSION_2.md) for the
+tested revisions, runtime checks, and limits, and the
+[cloud runbook](CLOUD_TEST_RUNBOOK.md) for how to repeat them.
 
 ## Route decision
 
@@ -96,21 +96,110 @@ The consumer npm installs reported advisories before and after tarball
 installation: CLI 67 → 68 high; Expo 25 → 26 high, 2 moderate throughout.
 These are build and typecheck results, not a dependency security audit.
 
+## Changes and verification after iOS session 1
+
+Branch `fix/session-restore-recall-release`; test plan in
+[cloud session 2](CLOUD_SESSION_2.md).
+
+- JS reload: new `engine.getSessionState` on both bridges;
+  `client.restoreSession()` (called by `NexconnProvider` and by
+  `initialize()` when already initialized) restores status, user and
+  generation. Addresses iOS L11 partial.
+- Recall: `useMessages` shows an SDK-provided recall notice when one exists
+  (otherwise removes the message) and gains `recall()`. Addresses iOS L7 partial.
+- `verify-packed-consumers.sh` builds before packing; new `expo-release`
+  targets in `verify-android.sh` / `verify-ios.sh`.
+- JS checks on the dev Mac: 53/53 tests, typecheck, lint (0 errors), build.
+- The Ubuntu run at `dce119b` exposed release sign-in and message
+  registration failures, a live recall issue, and two incorrect verifier
+  checks. `5ce885f` broadened the R8 keep rules, corrected the verifiers, and
+  switched recall reconciliation to a fresh SDK lookup.
+- Ubuntu retest at `5ce885f` passed:
+  - the Expo R8 release build and its runtime (sign-in, text, PNG, history,
+    cold re-sign-in);
+  - the verifiers;
+  - 16 KB runtime on API 35;
+  - the sender side of recall.
+
+  In that run, the recipient's open chat stayed stale and received no JS
+  recall event.
+- At `eb3cb59`, Ubuntu passed all 55 JS tests, Codegen and pack, and both
+  Android fixtures' debug and R8 builds. The live recall failure did not
+  recur: Android → Android, Android → iOS, and iOS → Android each delivered
+  a native callback and a JS delete event and removed the original text
+  while the recipient stayed in the chat. Recall before opening the
+  Android chat also passed. Refresh was exercised, but stale-message
+  catch-up remains unverified because the live callback removed the text
+  first.
+- The paired CLI checks passed two-way text, typing, custom messages, group
+  chat, iOS-to-Android edit delivery, and offline delivery to iOS. The
+  receipt reached the SDK and JS but the demo label lagged. Android did not
+  complete the incoming PNG download, and location sends failed on both
+  platforms (`31610`).
+- The `eb3cb59` Expo R8 APK passed HTTPS sign-in, capabilities and settings,
+  two-way text with a CLI peer, and decoded history on the 16 KB Android
+  emulator without Metro. Release image and cold restart were not repeated
+  on this revision.
+
+- macOS run at `eb3cb59` (see STATUS_SESSION_2.md):
+  - iOS CLI, Expo Debug and Release builds and packed consumers pass.
+  - Android ↔ iOS chat passes except X4 (PNG download stall), X6 (sender
+    edit refresh) and X10 (location 31610).
+  - iOS recipient recall failed after an account switch in the same
+    process.
+
+  The fix is not yet verified natively: the iOS bridge re-initializes the
+  SDK before a connect that follows a disconnect. Static trace and retest
+  rows T9–T12 are in [cloud session 2](CLOUD_SESSION_2.md).
+
+- At `d2d667f`, Ubuntu passed JavaScript verification, fresh CLI debug and
+  Expo R8 builds, Android T11 account-switch recall, and an exact byte
+  comparison of an Android → Android PNG downloaded without the fallback.
+  Paired X3 receipt delivery passes, but the Android bubble still stays Sent
+  beyond one second and needs a further fix. The paired iOS → Android
+  original PNG matched the source bytes through the native SDK download
+  without the fallback; iOS edits reached Android once and appeared live.
+  A post-receipt SDK lookup still returns `sentStatus=30` despite read count
+  1, so the hook needs receipt-aware state rather than only rereading status.
+  No new Android Expo release runtime claim was made. See the
+  [follow-up results](STATUS_SESSION_2.md#android-follow-up-at-d2d667f-november-2122-utc).
+
+- At `ec16c9f` (`3c8c76c` X3 fix plus docs), the paired X3 retest passed:
+  Android received exactly one matching iOS read receipt and the open bubble
+  changed from Sent to Read within one second without Refresh, reconnecting
+  or reopening, and stayed Read after reopening. The SDK still reports
+  `sentStatus=30`, so Read comes from stored receipt counts. See the
+  [X3 retest](STATUS_SESSION_2.md#x3-retest-at-ec16c9f-november-22-utc).
+
+- At `a7b4b31`, the Mac reran the iOS regressions on the X3 fix. All of them passed: T9/T10 recall, X6, R4 in Debug and Release, T12, R3–R5, and iOS receipts. See the
+  [iOS pre-merge regression](STATUS_SESSION_2.md#ios-pre-merge-regression-at-a7b4b31-november-22-utc).
+
+- At `d2d667f`, the Mac passed the iOS CLI and Expo Release builds, T9/T10
+  account-switch recall, T12 (typing, JS reload, live and offline delivery),
+  the iOS sender edit, and Release R3–R5. The Release sender image now appears
+  during upload without Refresh. See the
+  [iOS follow-up](STATUS_SESSION_2.md#ios-follow-up-at-d2d667f-november-2122-utc).
+
 ## Pending verification (cloud VMs / devices)
 
-Plan (18–19 November 2026): the iOS run (`verify-ios.sh`) is in progress on
-the macOS VM; the two-user live checklist and the Expo release builds are
-scheduled for the next cloud session — see "Next cloud session" in
-[the cloud runbook](CLOUD_TEST_RUNBOOK.md).
-
-- First native compile of the Swift bridge and `Nexconn-Swift.h` import (CLI + Expo) — running.
-- Expo release builds (Android `assembleRelease`, iOS Release) and iOS prebuild with the plugin.
-- All live scenarios L1–L16 in docs/CLOUD_TEST_RUNBOOK.md, including
-  cross-platform and official-client interop, offline sync, account switch,
-  JS reload, custom messages and physical-device push.
-- Android launch on a 16 KB page-size device or emulator.
+The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
+in this run from previous revisions. They do not establish full
+L1–L16 device coverage, official-client interoperability, or physical-device
+push; FCM and physical push were out of scope.
 
 ## Known limits and assumptions
+
+- **Location messages (X10) fail in the vendor SDK on both platforms** with
+  31610 `JsonParserFailed`. The bridge passes valid latitude, longitude and
+  POI. The vendor encoders write the core's `type` (location type) field
+  themselves:
+  - iOS `MessageMappings.rsimContent` sets `locationType = "2"`.
+  - Android's converter never sets it, so `LocationMessage.encode` writes
+    `""`.
+
+  The core models `location_type` as an enum (`Unknown`/`Wgs84`/`Gcj02`/`Bd09`).
+  Neither SDK exposes the field, so it can't be corrected through the public
+  API. This needs a vendor fix; it was not reported (no vendor contact).
 
 - `ErrorHandler`/`OperationHandler` success is assumed to be `error == null`
   or `error.code == 0`.
