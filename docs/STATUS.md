@@ -196,6 +196,15 @@ has not been compiled. Build both platforms, then run the rows in
 [cloud session 3](CLOUD_SESSION_3.md): C1–C6 for the code fixes and P1–P7
 from [PUSH.md](PUSH.md), which need physical devices.
 
+Results at `b025132`: on the Mac, B1 passed (71/71 JS tests, typecheck, lint
+with 0 errors). B3 CLI failed (Xcode 26.6, iOS 26.5 simulator SDK, exit 65)
+because `ios/Nexconn.mm` imported `Nexconn-Swift.h` without UserNotifications,
+and that header uses `UNUserNotificationCenterDelegate` and
+`UNNotificationPresentationOptions`. On Ubuntu, B1 and B2 passed (CLI and Expo
+Release). The next commit imports UserNotifications in `Nexconn.mm` and adds
+`s.frameworks = "UserNotifications"` to the podspec. This fix is not compiled
+yet. The Mac still needs to rerun B3 (CLI and Expo Release), B4 and C1–C5.
+
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
 in this run from previous revisions. They do not establish full
 L1–L16 device coverage, official-client interoperability, or physical-device

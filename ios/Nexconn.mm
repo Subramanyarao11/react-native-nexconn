@@ -1,5 +1,11 @@
 #import "Nexconn.h"
 
+// The generated Swift header exposes UserNotifications types (NexconnPush is a
+// UNUserNotificationCenterDelegate; NexconnBridge takes UNNotification and
+// UNNotificationResponse), so import the framework before it.
+#import <UIKit/UIKit.h>
+#import <UserNotifications/UserNotifications.h>
+
 // Swift interface of this pod (static library or framework builds).
 #if __has_include(<Nexconn/Nexconn-Swift.h>)
 #import <Nexconn/Nexconn-Swift.h>
