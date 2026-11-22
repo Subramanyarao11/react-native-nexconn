@@ -40,6 +40,7 @@ import {
   useMessages,
   useNexconnClient,
   useNexconnEvent,
+  useNotificationOpened,
   useTotalUnreadCount,
   useTypingUsers,
 } from 'react-native-nexconn/react';
@@ -531,6 +532,11 @@ const LOGGED_EVENTS = [
   'typingStatusChanged',
   'channelPinnedSync',
   'groupOperation',
+  'notificationOpened',
+  'notificationReceived',
+  'pushTokenReceived',
+  'pushTokenError',
+  'pushTokenReportResult',
   'unknownNativeEvent',
 ] as const;
 
@@ -614,6 +620,24 @@ function Playground() {
           }
         />
         <Button
+          title="Push permission"
+          onPress={() =>
+            run('push.requestPermission', () => client.push.requestPermission())
+          }
+        />
+        <Button
+          title="Push token?"
+          onPress={() =>
+            // Reports whether a token exists, never the token itself.
+            run('push.getToken', async () => {
+              const token = await client.push.getToken();
+              return token
+                ? { pushType: token.pushType, length: token.token.length }
+                : null;
+            })
+          }
+        />
+        <Button
           title="Disconnect"
           onPress={() => run('disconnect', () => client.disconnect())}
         />
@@ -640,6 +664,15 @@ function Signed() {
   const [open, setOpen] = useState<ChannelIdentifier | undefined>();
   const unread = useTotalUnreadCount();
   useNexconnEvent('messageReceived', () => undefined);
+  // Tapping a Nexconn notification opens that chat (cold start included).
+  useNotificationOpened((notification) => {
+    if (notification.channelType !== undefined && notification.channelId) {
+      setOpen({
+        channelType: notification.channelType,
+        channelId: notification.channelId,
+      });
+    }
+  });
   if (open) return <Chat channel={open} onBack={() => setOpen(undefined)} />;
   return (
     <View style={styles.flex}>

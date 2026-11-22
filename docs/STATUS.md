@@ -1,13 +1,15 @@
 # Implementation status
 
-Last updated 20 November 2026.
+Last updated 22 November 2026.
 
 ## Summary
 
 The SDK is **implemented at source level for the full public surface of the
 pinned Nexconn native SDKs** (Android `ai.nexconn.chat:chat:26.4.2`, iOS
-`NexconnChat/Chat 26.4.2`): 151 bridge methods, 18 paged query kinds and 62
-SDK event types, with 6 documented platform-only gaps (docs/PARITY.md).
+`NexconnChat/Chat 26.4.2`): 159 bridge methods, 18 paged query kinds and 67
+event types (62 SDK handler events plus 5 push events), with 8 documented
+platform-only methods and 1 Android-only push event (docs/PARITY.md).
+Comparison with the Flutter SDK: [FLUTTER_PARITY.md](FLUTTER_PARITY.md).
 
 Both native bridges have connected to Nexconn from the CLI fixtures on
 Android emulators and an iOS simulator. The Android CLI and Expo fixtures
@@ -46,6 +48,13 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
   idempotent initialize across JS reloads, de-duplicated connect, `busy` for
   concurrent native connects, session generation filtering, query/message
   handles cleared per session, emitter detached on module invalidation.
+- Push notifications (branch `feat/push-and-sdk-fixes`, source only, not
+  built): `client.push` (permission, token, initial/opened notification,
+  clear, Android push type, payload parser for `expo-notifications`), push
+  events, `useNotificationOpened`. Android installs a forwarding RongPush
+  listener at process start (`NexconnPushInitProvider`); iOS adds AppDelegate
+  helpers and an opt-in forwarding notification delegate. See
+  [PUSH.md](PUSH.md).
 - Expo config plugin (Maven repo, optional FCM wiring, notification-tap
   intent filters, optional APNs entitlement/background mode, SDK version pin),
   idempotent edits.
@@ -62,7 +71,7 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
 | Check | Result |
 | --- | --- |
 | `yarn install --immutable` (Yarn 4.18.1, Node 24.22.2) | pass |
-| `yarn test` — 49 tests (normalization, client lifecycle, stores, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
+| `yarn test` — 69 tests on 22 Nov 2026 (normalization, client lifecycle, stores, push, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
 | `yarn typecheck` (library, examples, shared demo) | pass |
 | `yarn lint` | 0 errors, 6 `no-void` warnings |
 | `yarn build` (Bob module + typings, `.ts` imports rewritten) | pass |
@@ -154,6 +163,11 @@ Branch `fix/session-restore-recall-release`; test plan in
 
 ## Pending verification (cloud VMs / devices)
 
+Branch `feat/push-and-sdk-fixes` (stacked on PR #4) changes native code that
+has not been compiled. Build both platforms, then run the rows in
+[cloud session 3](CLOUD_SESSION_3.md): C1–C6 for the code fixes and P1–P7
+from [PUSH.md](PUSH.md), which need physical devices.
+
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
 in this run from previous revisions. They do not establish full
 L1–L16 device coverage, official-client interoperability, or physical-device
@@ -177,12 +191,20 @@ push; FCM and physical push were out of scope.
   or `error.code == 0`.
 - Android delivers the open-channel enter response only via the
   `openChannelEntered` event; iOS also resolves `enter()` with it.
-- `refreshReferenceMessages` resolves when the remote result arrives; if the
-  SDK never calls the remote handler the promise stays pending.
-- Group `setMemberInfo` on Android requires a nickname; the bridge passes `""`
-  when none is given, which may clear an existing nickname.
-- Media `localPath` is passed through; the SDKs' accepted path/URI forms must
-  be confirmed on devices (`file://` is stripped on iOS).
+- `refreshReferenceMessages` resolves with `timedOut: true` and local
+  results after `timeoutMs` (default 15 s) if the SDK never calls the remote
+  handler (branch `feat/push-and-sdk-fixes`).
+- Group `setMemberInfo` on Android without a nickname now reads the member's
+  current nickname first and resends it, instead of clearing it (same
+  branch; not run on a device).
+- `openChannels.enter` resolves with the enter response on both platforms; on
+  Android the bridge waits for `onEntered` (default 10 s) (same branch).
+- Media `localPath`: both platforms accept absolute paths and `file://` URIs;
+  Android copies `content://` URIs into the app cache first (same branch).
+  The forms each SDK accepts still need confirming on devices.
+- Push: no row has been built or verified on a device. Flutter-only APIs with
+  no native 26.4.2 equivalent (`destroy`, runtime `setLogLevel`, group
+  `setRemark`) are not available ([FLUTTER_PARITY.md](FLUTTER_PARITY.md)).
 - Hooks are covered through their pure stores; React Native Testing Library
   is not installed, so rendered hook tests are not included.
 - Licensing, SDK redistribution terms and publication remain unresolved; the

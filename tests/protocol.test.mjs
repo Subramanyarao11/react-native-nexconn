@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { NATIVE_EVENT_TYPES } from '../src/core/normalize.ts';
+import { NATIVE_EVENT_TYPES, PLATFORM_ONLY_EVENT_TYPES } from '../src/core/normalize.ts';
 
 const root = new URL('..', import.meta.url).pathname;
 
@@ -29,7 +29,7 @@ const swift = read(walk(join(root, 'ios'), '.swift'));
 const jsMethods = new Set(
   [
     ...jsSource.matchAll(
-      /'((?:engine|channel|message|group|open|community|user|translate|tag|query)\.[A-Za-z]+)'/g
+      /'((?:engine|channel|message|group|open|community|user|translate|tag|query|push)\.[A-Za-z]+)'/g
     ),
   ].map((m) => m[1])
 );
@@ -43,8 +43,10 @@ const ANDROID_ONLY = new Set([
   'group.removeManagers',
   'engine.setPushContentShowStatus',
   'engine.getPushContentShowStatus',
+  'push.getPushType',
 ]);
-const IOS_ONLY = new Set(['engine.setDeviceToken']);
+// push.requestPermission: Android uses PermissionsAndroid in JS instead.
+const IOS_ONLY = new Set(['engine.setDeviceToken', 'push.requestPermission']);
 
 test('the JS client calls a non-trivial bridge surface', () => {
   assert.ok(jsMethods.size > 140, `only ${jsMethods.size} methods found`);
@@ -83,8 +85,25 @@ test('every query kind is created on both platforms', () => {
 
 test('every SDK handler event is forwarded by both platforms', () => {
   for (const type of NATIVE_EVENT_TYPES) {
-    assert.ok(kotlin.includes(`"${type}"`), `Android does not emit ${type}`);
-    assert.ok(swift.includes(`"${type}"`), `iOS does not emit ${type}`);
+    const only = PLATFORM_ONLY_EVENT_TYPES[type];
+    if (only !== 'ios') assert.ok(kotlin.includes(`"${type}"`), `Android does not emit ${type}`);
+    if (only !== 'android') assert.ok(swift.includes(`"${type}"`), `iOS does not emit ${type}`);
+  }
+});
+
+test('platform-only events are really absent on the other platform', () => {
+  for (const [type, only] of Object.entries(PLATFORM_ONLY_EVENT_TYPES)) {
+    const other = only === 'android' ? swift : kotlin;
+    assert.equal(other.includes(`"${type}"`), false, `${type} is emitted on both platforms`);
+  }
+});
+
+test('both platforms emit only push event types the JS layer models', () => {
+  const known = new Set(NATIVE_EVENT_TYPES);
+  for (const source of [kotlin, swift]) {
+    for (const [, type] of source.matchAll(/emitPush\(\s*"([A-Za-z]+\.on[A-Za-z]+)"/g)) {
+      assert.ok(known.has(type), `${type} is emitted natively but not translated in JS`);
+    }
   }
 });
 

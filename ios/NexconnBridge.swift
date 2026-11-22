@@ -1,6 +1,7 @@
 import Foundation
 import NexconnChatSDK
 import UIKit
+import UserNotifications
 
 /// One JavaScript invocation; resolves or rejects exactly once.
 final class Call {
@@ -110,6 +111,7 @@ public final class NexconnBridge: NSObject {
     registerUsers()
     registerTranslateAndTags()
     registerQueries()
+    registerPush()
   }
 
   // MARK: - Module plumbing
@@ -133,6 +135,41 @@ public final class NexconnBridge: NSObject {
   /// `NexconnBridge.registerDeviceToken(deviceToken)`.
   @objc public static func registerDeviceToken(_ deviceToken: Data) {
     NCEngine.setDeviceTokenData(deviceToken)
+    NexconnPush.shared.didRegister(deviceToken: deviceToken)
+  }
+
+  /// Call from `application(_:didFailToRegisterForRemoteNotificationsWithError:)`.
+  @objc public static func registerDeviceTokenFailed(_ error: Error) {
+    NexconnPush.shared.didFailToRegister(error: error)
+  }
+
+  /// Opt-in: makes the bridge the `UNUserNotificationCenter` delegate (it
+  /// forwards to the delegate it replaces). Call from
+  /// `application(_:didFinishLaunchingWithOptions:)` so a tap that launches
+  /// the app is captured.
+  @objc public static func installNotificationHandler() {
+    NexconnPush.shared.install()
+  }
+
+  /// For apps that keep their own notification delegate: call from
+  /// `userNotificationCenter(_:didReceive:withCompletionHandler:)`.
+  @objc public static func handleNotificationResponse(_ response: UNNotificationResponse) {
+    NexconnPush.shared.handleOpen(response)
+  }
+
+  /// For apps that keep their own notification delegate: call from
+  /// `userNotificationCenter(_:willPresent:withCompletionHandler:)`.
+  @objc public static func handleNotificationWillPresent(_ notification: UNNotification) {
+    NexconnPush.shared.handleWillPresent(notification)
+  }
+
+  /// Emits a push event; returns whether a JS runtime was attached.
+  func emitPush(_ type: String, _ payload: Any) -> Bool {
+    stateLock.lock()
+    let attached = !emitters.isEmpty
+    stateLock.unlock()
+    emit(type, payload, opId: nil)
+    return attached
   }
 
   @objc public func integrationStatusJSON() -> String {
@@ -143,7 +180,7 @@ public final class NexconnBridge: NSObject {
     let call = Call(method: method, resolve: resolve, reject: reject)
     do {
       guard let handler = methods[method] else { throw BridgeError.unsupported(method) }
-      if !method.hasPrefix("engine."), currentAppKey() == nil {
+      if !method.hasPrefix("engine."), !method.hasPrefix("push."), currentAppKey() == nil {
         throw BridgeError(category: "not_initialized", message: "Call initialize() before \(method)")
       }
       var parsed: Args = [:]
@@ -708,9 +745,66 @@ public final class NexconnBridge: NSObject {
         index = next
       }
       NCEngine.setDeviceTokenData(data)
+      NexconnPush.shared.recordToken(hex: hex.lowercased())
       c.resolve(nil)
     }
     // engine.setPushContentShowStatus / getPushContentShowStatus: Android only.
+  }
+
+  // MARK: - push.* (usable before initialize; see NexconnPush)
+
+  private static func permissionStatus(_ status: UNAuthorizationStatus) -> String {
+    switch status {
+    case .authorized: return "granted"
+    case .provisional: return "provisional"
+    case .ephemeral: return "ephemeral"
+    case .denied: return "denied"
+    case .notDetermined: return "undetermined"
+    @unknown default: return "undetermined"
+    }
+  }
+
+  private func registerPush() {
+    on("push.getInitialNotification") { _, c in c.resolve(NexconnPush.shared.takeInitialNotification()) }
+    on("push.getToken") { _, c in c.resolve(NexconnPush.shared.currentToken()) }
+    on("push.getPermissionStatus") { _, c in
+      UNUserNotificationCenter.current().getNotificationSettings { settings in
+        c.resolve(["status": Self.permissionStatus(settings.authorizationStatus), "platform": "ios"])
+      }
+    }
+    on("push.requestPermission") { a, c in
+      var options: UNAuthorizationOptions = []
+      if a.bool("alert") ?? true { options.insert(.alert) }
+      if a.bool("badge") ?? true { options.insert(.badge) }
+      if a.bool("sound") ?? true { options.insert(.sound) }
+      if a.bool("provisional") ?? false { options.insert(.provisional) }
+      let register = a.bool("registerForRemoteNotifications") ?? true
+      let center = UNUserNotificationCenter.current()
+      center.requestAuthorization(options: options) { granted, error in
+        if let error {
+          c.reject(BridgeError(category: "native", message: error.localizedDescription))
+          return
+        }
+        if granted && register {
+          // The token arrives in the AppDelegate; forward it with
+          // NexconnBridge.registerDeviceToken(_:).
+          DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+        }
+        center.getNotificationSettings { settings in
+          c.resolve(["status": Self.permissionStatus(settings.authorizationStatus), "platform": "ios"])
+        }
+      }
+    }
+    on("push.clearNotifications") { _, c in
+      UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+      c.resolve(nil)
+    }
+    on("push.clearNotification") { a, c in
+      let id = try a.reqStr("notificationId")
+      UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
+      c.resolve(nil)
+    }
+    // push.getPushType: Android only (RongPush provider selection).
   }
 
   // MARK: - channel.*
@@ -1030,12 +1124,20 @@ public final class NexconnBridge: NSObject {
     }
     on("message.refreshReference") { [unowned self] a, c in
       let params = RefreshReferenceMessageParams(channelIdentifier: try self.identifier(a.reqDict("channel")), messageIds: try a.reqStrings("messageIds"))
+      let lock = NSLock()
       var local: [MessageResult] = []
+      let snapshot: () -> [MessageResult] = { lock.lock(); defer { lock.unlock() }; return local }
+      // The SDK may never call the remote handler (e.g. offline); resolve with
+      // the local results and timedOut=true instead of hanging forever.
+      let timeoutMs = min(max(a.int("timeoutMs") ?? 15_000, 1_000), 120_000)
+      DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(timeoutMs)) {
+        c.resolve(["local": snapshot(), "remote": [MessageResult](), "timedOut": true])
+      }
       BaseChannel.refreshReferenceMessage(
         params: params,
-        localMessageHandler: { results in local = results },
-        remoteMessageHandler: { results in c.resolve(["local": local, "remote": results]) },
-        errorHandler: { error in c.native(error, detail: ["local": local]) }
+        localMessageHandler: { results in lock.lock(); local = results; lock.unlock() },
+        remoteMessageHandler: { results in c.resolve(["local": snapshot(), "remote": results, "timedOut": false]) },
+        errorHandler: { error in c.native(error, detail: ["local": snapshot()]) }
       )
     }
   }
