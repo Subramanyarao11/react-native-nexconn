@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>React Native Nexconn: project write-up</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  :root { --ink: #1b1f24; --muted: #57606a; --accent: #1565c0; --line: #d0d7de; --soft: #f3f6fa; }
+  * { box-sizing: border-box; }
+  body { font: 10.5pt/1.45 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 2mm; color: var(--accent); }
+  h2 { font-size: 13.5pt; margin: 7mm 0 2mm; padding-bottom: 1mm; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 11pt; margin: 4mm 0 1mm; }
+  p { margin: 0 0 2.5mm; }
+  ul { margin: 0 0 2.5mm; padding-left: 5mm; }
+  li { margin: 0 0 1mm; }
+  code { font: 9pt ui-monospace, Menlo, Consolas, monospace; background: var(--soft); padding: 0 1mm; border-radius: 2px; }
+  pre { font: 8.8pt/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--soft); padding: 3mm; border-radius: 4px; margin: 0 0 3mm; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 3mm; font-size: 9.5pt; }
+  th, td { text-align: left; vertical-align: top; padding: 1.4mm 2mm; border-bottom: 1px solid var(--line); }
+  th { background: var(--soft); font-weight: 600; }
+  .sub { color: var(--muted); font-size: 11pt; margin-bottom: 4mm; }
+  .facts { display: grid; grid-template-columns: 34mm 1fr; gap: 1.2mm 3mm; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 3mm 4mm; margin: 0 0 4mm; font-size: 9.8pt; }
+  .facts b { color: var(--muted); font-weight: 600; }
+  .key { font: 600 10.5pt ui-monospace, Menlo, Consolas, monospace; color: var(--accent); }
+  .note { font-size: 9pt; color: var(--muted); }
+  h2, h3 { break-after: avoid; page-break-after: avoid; }
+  tr, pre, li, .facts { break-inside: avoid; }
+  .ok { color: #1a7f37; font-weight: 600; }
+  .no { color: #9a6700; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>React Native Nexconn</h1>
+<div class="sub">A React Native SDK for Nexconn Chat: a typed client, React hooks, push routing and an Expo config plugin over Nexconn's official Android and iOS SDKs.</div>
+
+<div class="facts">
+  <b>Nexconn App Key</b><span class="key">{{APP_KEY}}</span>
+  <b>Data center</b><span>Singapore (<code>AreaCode.sg</code>)</span>
+  <b>Runnable app</b><span><a href="{{APK_URL}}">{{APK_URL}}</a> (Android 7+, sideload)</span>
+  <b>Demo video</b><span><a href="{{VIDEO_URL}}">{{VIDEO_URL}}</a></span>
+  <b>Source code</b><span><a href="https://github.com/Subramanyarao11/react-native-nexconn">github.com/Subramanyarao11/react-native-nexconn</a> (MIT)</span>
+  <b>Library on npm</b><span><a href="https://www.npmjs.com/package/@subramanyarao11/react-native-nexconn">@subramanyarao11/react-native-nexconn</a> 0.1.0-beta.0</span>
+  <b>Documentation</b><span><a href="https://subramanyarao11.github.io/react-native-nexconn/">subramanyarao11.github.io/react-native-nexconn</a></span>
+  <b>Test accounts</b><span><code>judge1</code> / <code>{{JUDGE1_PASSWORD}}</code> and <code>judge2</code> / <code>{{JUDGE2_PASSWORD}}</code></span>
+</div>
+
+<h2>Why we built it, and the problem it solves</h2>
+<p>Nexconn ships chat SDKs for Android, iOS, the Web and Flutter, but nothing for React Native, one of the most widely used ways to build mobile apps. A React Native team that wants Nexconn today must write and maintain two native bridges, in Kotlin and Swift, and re-solve the same hard problems on each:</p>
+<ul>
+  <li>delivering SDK callbacks safely across threads, and surviving JavaScript reloads without registering handlers twice;</li>
+  <li>keeping a previous user's late callbacks out of the next user's session after an account switch;</li>
+  <li>matching a message's local echo to the server's acknowledgement without duplicates, and retrying failed sends without sending twice;</li>
+  <li>smoothing over the places where the Android and iOS SDKs behave differently.</li>
+</ul>
+<p>We built a reusable, open-source library so that any React Native or Expo developer can add Nexconn chat by installing one package and using familiar React hooks. It is not a single app: it's infrastructure that makes every future React Native Nexconn app faster to build and more reliable. The demo app shows it working end to end.</p>
+
+<h2>Features that use the Nexconn SDK</h2>
+<p>The library bridges the official Nexconn SDKs, <code>ai.nexconn.chat:chat</code> 26.4.2 (Android) and <code>NexconnChat</code> 26.4.2 (iOS), and covers their public surface: <b>159 bridge methods, 18 paged query kinds and 67 events</b>. The demo app uses these features:</p>
+<table>
+  <tr><th style="width:30%">Feature</th><th>Nexconn SDK capability used</th></tr>
+  <tr><td>Sign-in and connection</td><td><code>NCEngine</code> initialize, connect with a user token issued by our server, connection-status events, kicked-offline handling, disconnect</td></tr>
+  <tr><td>Conversation list</td><td>Channels query, unread counts, pinned and no-disturb state, channel sync events, total unread count</td></tr>
+  <tr><td>One-to-one and group chat</td><td>Direct and group channels: send text, history paging, live receive, offline message sync</td></tr>
+  <tr><td>Images and files</td><td>Media send with upload progress and cancel; media download</td></tr>
+  <tr><td>Read receipts</td><td>Read-receipt requests and responses, receipt counts (for example "read 2/5" in groups)</td></tr>
+  <tr><td>Typing indicator</td><td>Typing status send and receive</td></tr>
+  <tr><td>Edit and recall</td><td>Message update and delete-for-all (recall), update and deletion events</td></tr>
+  <tr><td>Replies and @mentions</td><td>Reference messages; mentioned-info, and unread-mention lookup</td></tr>
+  <tr><td>Drafts and search</td><td>Channel drafts; local message search</td></tr>
+  <tr><td>Groups</td><td>Create, invite, kick, leave, admin roles, member queries, group operation and member-change events</td></tr>
+  <tr><td>Contacts</td><td>Friends, friend applications, online status, block list, user profiles</td></tr>
+  <tr><td>Push notifications</td><td>FCM and APNs tokens, notification permission, and routing a notification tap (including a cold start) to the right chat</td></tr>
+  <tr><td>Developer playground</td><td>Capabilities, SDK version, app settings, tags, do-not-disturb time, and a redacted live event log</td></tr>
+</table>
+<p class="note">The client also covers open and community channels, translation, tags, message metadata, streams, speech to text and custom message types. These are available to apps through the API and hooks but aren't all shown in the demo.</p>
+
+<h2>How it works</h2>
+<pre>React components
+  │  hooks: messages, channels, groups, users, drafts, search, push …
+  ▼
+NexconnClient (TypeScript): typed modules, errors, paged queries
+  │  one JSON protocol: invoke(method, args) + one event stream
+  ▼
+TurboModule (React Native New Architecture)
+  ├─ Android: Kotlin bridge → ai.nexconn.chat:chat 26.4.2
+  └─ iOS:     Swift bridge  → NexconnChat 26.4.2</pre>
+<ul>
+  <li><b>Session generations.</b> Every connect and disconnect bumps a generation number carried by every event, so callbacks from a previous user never reach the next one.</li>
+  <li><b>No fake success.</b> If a platform's SDK has no equivalent for a call, it fails with a typed <code>unsupported</code> error. A parity matrix generated from the source lists every method per platform.</li>
+  <li><b>Retry that can't duplicate.</b> A failed message stays on screen with its error. Retry is offered only once the SDK itself reports the send as failed.</li>
+  <li><b>Read state from real receipts.</b> Testing showed that the Android SDK reports receipts but keeps the stored message at "Sent", so the hooks track the SDK's receipt counts.</li>
+  <li><b>Measured performance.</b> Profiling the message list made live message handling about 80 times faster (379 µs to 4.5 µs per message in a 2,000-message list).</li>
+</ul>
+
+<h2>How it was verified</h2>
+<table>
+  <tr><th style="width:62%">Check</th><th>Result</th></tr>
+  <tr><td>101 automated tests (unit, wire-protocol contract, rendered React hooks), typecheck, lint, build: in CI on every pull request</td><td class="ok">Pass</td></tr>
+  <tr><td>Android and iOS builds: Community CLI and Expo, Debug and Release (Android R8 keep rules, 16 KB page alignment)</td><td class="ok">Pass</td></tr>
+  <tr><td>Packed package installed into fresh Community CLI and Expo apps</td><td class="ok">Pass</td></tr>
+  <tr><td>Live, two users, real Nexconn service (Android emulators and iOS simulators, including Android ↔ iOS): text, typing, read receipts, images and files with byte-identical downloads, edit and recall, offline delivery, account switch, JS reload, kicked by another login, groups, custom messages, release builds</td><td class="ok">Pass</td></tr>
+  <tr><td>Push permission and token on both platforms; notification-tap routing, warm and cold (iOS simulator)</td><td class="ok">Pass</td></tr>
+  <tr><td>Push delivery on physical devices; the newest hooks on devices</td><td class="no">Not yet tested</td></tr>
+  <tr><td>Location messages</td><td class="no">Fail inside the vendor SDK (native code 31610)</td></tr>
+</table>
+
+<h2>Trying it</h2>
+<h3>Demo app (Android)</h3>
+<ul>
+  <li>Download the APK from the link above and install it on an Android 7+ phone or emulator (allow installs from unknown sources).</li>
+  <li>The App Key and server are filled in. Sign in as <code>judge1</code>. To chat with yourself, sign in as <code>judge2</code> on a second device or emulator, then type <code>judge2</code> on the Chats tab and tap <b>Chat</b>.</li>
+  <li>Tap a message for actions: reply, edit, recall, retry. Use the Members button in a group, and the Contacts and Playground tabs.</li>
+  <li>The sign-in server runs on a free host that sleeps when idle, so the first sign-in can take up to a minute.</li>
+</ul>
+<h3>Library</h3>
+<pre>npm install @subramanyarao11/react-native-nexconn</pre>
+<p>The documentation site has a quickstart for Community CLI and Expo, a reference for every hook, and troubleshooting.</p>
+
+<h2>What's next</h2>
+<ul>
+  <li>Verify push delivery and the newest hooks on physical devices, and test interop with official Nexconn clients.</li>
+  <li>Report the location-message defect to Nexconn, then move to a stable 1.0.</li>
+</ul>
+<p class="note">React Native Nexconn is a community project and is not affiliated with or endorsed by Nexconn. Built by Subramanya with AI coding agents (Claude Code for implementation, Devin for native builds and device testing on cloud VMs).</p>
+
+</body>
+</html>
