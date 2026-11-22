@@ -23,7 +23,7 @@ code on the VM.
 
 | # | Command | Pass |
 | --- | --- | --- |
-| B1 | `bash scripts/cloud/verify-js.sh` | 71/71 tests, typecheck, lint 0 errors |
+| B1 | `bash scripts/cloud/verify-js.sh` | 72/72 tests, typecheck, lint 0 errors |
 | B2 (Ubuntu) | `bash scripts/cloud/verify-android.sh cli` and `expo-release` | Builds; R8 mapping checks pass; merged manifest contains `NexconnPushInitProvider` (`grep -r NexconnPushInitProvider android/app/build/intermediates/merged_manifests`) |
 | B3 (Mac) | `bash scripts/cloud/verify-ios.sh cli` and `expo-release` | Builds with `NexconnPush.swift`; the CLI AppDelegate compiles inside `#if canImport(Nexconn)` and the import resolves (check the build log for "Nexconn" module import) |
 | B4 | `bash scripts/cloud/verify-packed-consumers.sh` | Pass |
@@ -32,11 +32,11 @@ code on the VM.
 
 | # | Steps | Pass when |
 | --- | --- | --- |
-| C1 | Playground → **Push permission** | Android 13+: system dialog, then `granted`/`denied` matches the choice. iOS simulator: dialog, then `granted`. Re-pressing returns the stored state without a dialog |
+| C1 | Playground → **Push permission** | Android 13+: system dialog, then `granted`/`denied` matches the choice. After a grant, re-pressing returns `granted` without a dialog. After a denial, Android shows the dialog once more (the platform's one-retry policy); after a second denial, requests return `denied` without a dialog. iOS simulator: dialog, then the choice; re-pressing returns the stored state without a dialog |
 | C2 | Playground → **Push token?** | Emulator without FCM: `null`, no crash. iOS simulator: either `{pushType:"apns", length:64}` or a `pushTokenError` line in the event log. Don't paste token values |
-| C3 | iOS simulator: drag an `.apns` file onto the simulator, with payload `{"aps":{"alert":{"title":"T","body":"B"}},"rc":{"cType":"PR","tId":"<peer userId>","fId":"<peer>"}}` and `"Simulator Target Bundle"` set; tap it with the app in the background, then again after killing the app | The event log shows `notificationOpened`, and the demo opens the chat with that peer: warm once, and cold once via the initial notification. No double open |
+| C3 | iOS simulator: drag an `.apns` file onto the simulator, with payload `{"aps":{"alert":{"title":"T","body":"B"}},"rc":{"cType":"PR","tId":"<peer userId>","fId":"<peer>"}}` and `"Simulator Target Bundle"` set; tap it with the app in the background, then again after killing the app | The demo opens the chat with that peer exactly once, warm and cold (cold via the initial notification). No double open. Afterwards the Playground log shows one `notificationOpened (routed)` line per tap. A warm tap may also log the raw `notificationOpened` event if the Playground was open; a cold tap only logs the routed line |
 | C4 | Group of A and B. In the Playground (or a debugger), call `client.groups.setMemberInfo(groupId, {userId: B, extra: 'x'})` after setting B's nickname to `nick` | Android: B's nickname is still `nick` (`getMembers`); iOS behaves the same |
-| C5 | Open channel: `client.openChannels.enter('<room>')` | Android and iOS both resolve with `{participantCount, ...}`; previously Android resolved `undefined` |
+| C5 | Open channel: `client.openChannels.enter('<room>')` with a room ID that exists in the Nexconn console (the SDK can't create rooms; don't create one through an unverified server API) | Android and iOS both resolve with `{participantCount, ...}`; previously Android resolved `undefined` |
 | C6 | Android: send an image picked as a `content://` URI (a document-picker URI), and one as `file:///...` | Both send and the peer downloads the image; `adb shell ls <cache>/nexconn-upload` shows the copy for the `content://` case |
 
 ## 3. Push on physical devices (only if available)
@@ -120,3 +120,14 @@ resolved at 09:28:58.238Z. iOS sent its image through the Send file UI.
 Physical-device push P1–P7 (iOS): not run. No APNs key uploaded to Nexconn or
 signed device build was available; simulator `.apns` taps are not evidence of
 push delivery.
+
+## Follow-up fixes after the results
+
+| Row | Change | Rerun |
+| --- | --- | --- |
+| C4 (iOS) | `group.setMemberInfo` without a nickname now reads the member with `getMembers` and resends the current nickname (or `""`), like Android. The iOS SDK clears a nil nickname. Not compiled yet | Mac: B3, then C4 on both clients (Alice's and Bob's own), including after a reconnect. Ubuntu: C4 as a regression check |
+| C1 (Android) | Criterion relaxed to Android's one-retry denial policy. No code change | Ubuntu: rerun C1 against the new criterion |
+| C3 (iOS) | The demo now logs `notificationOpened (routed)` from its tap handler into a log that outlives the Playground screen, so warm and cold taps both leave a line. Criterion reworded to the routing behaviour | Mac: C3, warm and cold |
+| C5 | Unchanged. Still needs a room ID from the Nexconn console | Both, once a room ID is available |
+
+**Needs re-verification:** C4 iOS, C3 iOS and C1 Android.

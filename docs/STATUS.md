@@ -71,7 +71,7 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
 | Check | Result |
 | --- | --- |
 | `yarn install --immutable` (Yarn 4.18.1, Node 24.22.2) | pass |
-| `yarn test` — 71 tests on 22 Nov 2026 (normalization, client lifecycle, stores, push, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
+| `yarn test` — 72 tests on 22 Nov 2026 (normalization, client lifecycle, stores, push, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
 | `yarn typecheck` (library, examples, shared demo) | pass |
 | `yarn lint` | 0 errors, 6 `no-void` warnings |
 | `yarn build` (Bob module + typings, `.ts` imports rewritten) | pass |
@@ -230,6 +230,19 @@ cold path emits no generic event. C4 fails on iOS: an extra-only
 bridge omits it. C5 is blocked (no room ID, 23410). Physical push P1–P7 was not
 run. Details: [cloud session 3 results](CLOUD_SESSION_3.md#ios-mac).
 
+Follow-up after these results (needs re-verification):
+- **C4 iOS:** fixed in source. The iOS bridge now re-reads the member and
+  resends the current nickname when `setMemberInfo` omits it. It hasn't been
+  compiled or run yet. A contract test checks that both bridges keep this
+  fallback.
+- **C1 Android:** the criterion now describes Android's one-retry denial
+  policy. No code change.
+- **C3 iOS:** the demo logs routed taps (warm and cold) in a log that
+  survives navigation, and the criterion now describes routing.
+- **C5:** still blocked until a room ID is available.
+
+See the [follow-up table](CLOUD_SESSION_3.md#follow-up-fixes-after-the-results).
+
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
 in this run from previous revisions. They do not establish full
 L1–L16 device coverage, official-client interoperability, or physical-device
@@ -256,9 +269,10 @@ push; FCM and physical push were out of scope.
 - `refreshReferenceMessages` resolves with `timedOut: true` and local
   results after `timeoutMs` (default 15 s) if the SDK never calls the remote
   handler (branch `feat/push-and-sdk-fixes`).
-- Group `setMemberInfo` on Android without a nickname now reads the member's
-  current nickname first and resends it, instead of clearing it (same
-  branch; not run on a device).
+- Group `setMemberInfo` without a nickname reads the member's current
+  nickname first and resends it, because both SDKs clear an omitted nickname.
+  Verified on Android (C4); the iOS fix is in source and needs
+  re-verification.
 - `openChannels.enter` resolves with the enter response on both platforms; on
   Android the bridge waits for `onEntered` (default 10 s) (same branch).
 - Media `localPath`: both platforms accept absolute paths and `file://` URIs;

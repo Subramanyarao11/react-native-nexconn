@@ -116,3 +116,20 @@ test('both platforms emit only event types the JS layer models', () => {
     }
   }
 });
+
+// C4: both SDKs clear a member's nickname when it is omitted, so both bridges
+// must re-read the current nickname before an extra-only setMemberInfo.
+test('group.setMemberInfo keeps the nickname when it is omitted, on both platforms', () => {
+  const handler = (source, next) => {
+    const start = source.indexOf('on("group.setMemberInfo")');
+    assert.ok(start >= 0, 'handler exists');
+    return source.slice(start, source.indexOf(`on("${next}")`, start));
+  };
+  for (const [name, block] of [
+    ['Kotlin', handler(kotlin, 'group.addFavorites')],
+    ['Swift', handler(swift, 'group.addFavorites')],
+  ]) {
+    assert.match(block, /getMembers\(/, `${name} reads the current member first`);
+    assert.match(block, /nickname/, `${name} resends the nickname`);
+  }
+});

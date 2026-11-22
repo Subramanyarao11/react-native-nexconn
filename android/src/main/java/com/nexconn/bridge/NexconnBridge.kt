@@ -1378,7 +1378,7 @@ internal object NexconnBridge {
         return@on
       }
       // Android requires a nickname; keep the member's current one rather than
-      // clearing it (iOS leaves an omitted nickname unchanged).
+      // clearing it. iOS does the same (its SDK clears a nil nickname).
       channel.getMembers(
         listOf(userId),
         object : OperationHandler<List<GroupMemberInfo>> {

@@ -1227,11 +1227,23 @@ public final class NexconnBridge: NSObject {
       try self.group(a).getMembers(userIds: try a.reqStrings("userIds"), completion: self.result(c) as OperationHandler<[GroupMemberInfo]>)
     }
     on("group.setMemberInfo") { [unowned self] a, c in
+      let channel = try self.group(a)
       let params = SetGroupMemberInfoParams()
-      params.userId = try a.reqStr("userId")
-      params.nickname = a.str("nickname")
+      let userId = try a.reqStr("userId")
+      params.userId = userId
       params.extra = a.str("extra")
-      try self.group(a).setMemberInfo(params: params, completion: self.detail(c))
+      if let nickname = a.str("nickname") {
+        params.nickname = nickname
+        channel.setMemberInfo(params: params, completion: self.detail(c))
+        return
+      }
+      // The SDK clears a nil nickname (verified in C4). Resend the member's
+      // current nickname so an extra-only update keeps it, like Android.
+      channel.getMembers(userIds: [userId]) { [unowned self] members, error in
+        if failed(error) { return c.native(error) }
+        params.nickname = members?.first(where: { $0.userId == userId })?.nickname ?? ""
+        channel.setMemberInfo(params: params, completion: self.detail(c))
+      }
     }
     on("group.addFavorites") { [unowned self] a, c in try self.group(a).addFavorites(userIds: try a.reqStrings("userIds"), completion: self.errorHandler(c)) }
     on("group.removeFavorites") { [unowned self] a, c in try self.group(a).removeFavorites(userIds: try a.reqStrings("userIds"), completion: self.errorHandler(c)) }
