@@ -2,9 +2,12 @@ import type {
   Channel,
   ChannelIdentifier,
   Message,
+  MessageContent,
+  OutgoingContent,
   ReadReceiptInfo,
+  SendOptions,
 } from '../core/types.ts';
-import { SentStatus } from '../core/enums.ts';
+import { MessageDirection, SentStatus } from '../core/enums.ts';
 
 export function sameChannel(
   a: ChannelIdentifier,
@@ -269,4 +272,256 @@ export function readStateOf(
     };
   }
   return { read: message.sentStatus === SentStatus.read };
+}
+
+/**
+ * Ordered list keyed by a string id, used by the paged hooks (members,
+ * groups, search results, friend applications). `upsert` keeps first-seen
+ * order unless a comparator is supplied. All updates replace the array.
+ */
+export class KeyedListStore<T> {
+  private items: T[] = [];
+  private readonly keyOf: (item: T) => string;
+  private readonly compare: ((a: T, b: T) => number) | undefined;
+
+  constructor(keyOf: (item: T) => string, compare?: (a: T, b: T) => number) {
+    this.keyOf = keyOf;
+    this.compare = compare;
+  }
+
+  get list(): readonly T[] {
+    return this.items;
+  }
+
+  has(key: string): boolean {
+    return this.items.some((item) => this.keyOf(item) === key);
+  }
+
+  get(key: string): T | undefined {
+    return this.items.find((item) => this.keyOf(item) === key);
+  }
+
+  /** Inserts or replaces items; returns true if anything changed. */
+  upsert(items: readonly T[]): boolean {
+    if (items.length === 0) return false;
+    const next = [...this.items];
+    const index = new Map(next.map((item, i) => [this.keyOf(item), i]));
+    for (const item of items) {
+      const key = this.keyOf(item);
+      const at = index.get(key);
+      if (at === undefined) {
+        index.set(key, next.length);
+        next.push(item);
+      } else {
+        next[at] = item;
+      }
+    }
+    if (this.compare) next.sort(this.compare);
+    this.items = next;
+    return true;
+  }
+
+  /** Replaces matching items with `update(item)`; returns true on change. */
+  patch(key: string, update: (item: T) => T): boolean {
+    const at = this.items.findIndex((item) => this.keyOf(item) === key);
+    if (at < 0) return false;
+    const next = [...this.items];
+    next[at] = update(next[at] as T);
+    if (this.compare) next.sort(this.compare);
+    this.items = next;
+    return true;
+  }
+
+  remove(keys: readonly string[]): boolean {
+    if (keys.length === 0) return false;
+    const doomed = new Set(keys);
+    const next = this.items.filter((item) => !doomed.has(this.keyOf(item)));
+    if (next.length === this.items.length) return false;
+    this.items = next;
+    return true;
+  }
+
+  /** Keeps only items matching `predicate`; returns true on change. */
+  retain(predicate: (item: T) => boolean): boolean {
+    const next = this.items.filter(predicate);
+    if (next.length === this.items.length) return false;
+    this.items = next;
+    return true;
+  }
+
+  reset(): void {
+    this.items = [];
+  }
+}
+
+/** Send state of one outgoing message tracked by `useMessages`. */
+export interface OutboxEntry {
+  readonly clientId: number;
+  readonly status: 'sending' | 'failed';
+  /** Upload progress in percent (media only). */
+  readonly progress?: number;
+  /** The rejection from the SDK when `status` is `failed`. */
+  readonly error?: unknown;
+  /** Content and options as sent, reused by `retry`. */
+  readonly content: OutgoingContent;
+  readonly options?: SendOptions;
+}
+
+/**
+ * In-flight and failed sends of one list, keyed by the local `clientId` the
+ * SDK assigned when it stored the message. Immutable snapshots.
+ */
+export class OutboxStore {
+  private map: ReadonlyMap<number, OutboxEntry> = new Map();
+
+  get entries(): ReadonlyMap<number, OutboxEntry> {
+    return this.map;
+  }
+
+  get(clientId: number): OutboxEntry | undefined {
+    return this.map.get(clientId);
+  }
+
+  begin(clientId: number, content: OutgoingContent, options?: SendOptions) {
+    this.set({
+      clientId,
+      status: 'sending',
+      content,
+      ...(options ? { options } : {}),
+    });
+  }
+
+  progress(clientId: number, progress: number): boolean {
+    const entry = this.map.get(clientId);
+    if (!entry || entry.status !== 'sending') return false;
+    const value = Math.max(0, Math.min(100, Math.round(progress)));
+    if (entry.progress === value) return false;
+    this.set({ ...entry, progress: value });
+    return true;
+  }
+
+  fail(clientId: number, error: unknown): boolean {
+    const entry = this.map.get(clientId);
+    if (!entry) return false;
+    const next: { -readonly [K in keyof OutboxEntry]: OutboxEntry[K] } = {
+      ...entry,
+      status: 'failed',
+      error,
+    };
+    delete next.progress;
+    this.set(next);
+    return true;
+  }
+
+  delete(clientId: number): boolean {
+    if (!this.map.has(clientId)) return false;
+    const next = new Map(this.map);
+    next.delete(clientId);
+    this.map = next;
+    return true;
+  }
+
+  reset(): void {
+    this.map = new Map();
+  }
+
+  private set(entry: OutboxEntry): void {
+    const next = new Map(this.map);
+    next.set(entry.clientId, entry);
+    this.map = next;
+  }
+}
+
+/** What the UI should show for an outgoing message. */
+export interface MessageSendState {
+  readonly status: 'sending' | 'failed' | 'canceled' | 'sent';
+  readonly progress?: number;
+  readonly error?: unknown;
+  /**
+   * True only when the SDK's own copy says the send definitively failed or
+   * was canceled, so resending cannot create a server-side duplicate.
+   */
+  readonly canRetry: boolean;
+}
+
+// Combine messages need the original message references, which a stored
+// copy no longer has, so they can only be retried from this session's outbox.
+const RESENDABLE = new Set<MessageContent['type']>([
+  'text',
+  'image',
+  'file',
+  'voice',
+  'gif',
+  'video',
+  'location',
+  'reference',
+  'custom',
+]);
+
+// Fields the SDK fills in on stored/received content; never sent.
+const RECEIVED_ONLY = [
+  'thumbnailBase64',
+  'thumbWidth',
+  'thumbHeight',
+  'dataSize',
+  'numberOfChannels',
+  'sampleRate',
+  'format',
+  'speechToText',
+  'referMsgType',
+  'referMsgStatus',
+] as const;
+
+/**
+ * Content of a stored outgoing message that can be sent again, without the
+ * fields the SDK adds on storage. Undefined for content that cannot be
+ * resent as-is (stream, recall notices, combine, unknown).
+ */
+export function resendableContent(
+  message: Message
+): OutgoingContent | undefined {
+  if (!RESENDABLE.has(message.content.type)) return undefined;
+  const copy = { ...message.content } as Record<string, unknown>;
+  for (const key of RECEIVED_ONLY) delete copy[key];
+  return copy as unknown as OutgoingContent;
+}
+
+/**
+ * Send state from the outbox entry (this session's sends) and the SDK's
+ * `sentStatus`. Incoming messages are always `sent`.
+ */
+export function sendStateOf(
+  message: Message,
+  entry: OutboxEntry | undefined
+): MessageSendState {
+  if (message.direction !== MessageDirection.send) {
+    return { status: 'sent', canRetry: false };
+  }
+  const definitive =
+    message.sentStatus === SentStatus.failed ||
+    message.sentStatus === SentStatus.canceled;
+  const canRetry =
+    definitive &&
+    (entry !== undefined || resendableContent(message) !== undefined);
+  if (entry?.status === 'sending') {
+    return {
+      status: 'sending',
+      canRetry: false,
+      ...(entry.progress !== undefined ? { progress: entry.progress } : {}),
+    };
+  }
+  if (message.sentStatus === SentStatus.canceled) {
+    return { status: 'canceled', canRetry };
+  }
+  if (entry?.status === 'failed' || message.sentStatus === SentStatus.failed) {
+    return {
+      status: 'failed',
+      canRetry,
+      ...(entry?.error !== undefined ? { error: entry.error } : {}),
+    };
+  }
+  if (message.sentStatus === SentStatus.sending) {
+    return { status: 'sending', canRetry: false };
+  }
+  return { status: 'sent', canRetry: false };
 }

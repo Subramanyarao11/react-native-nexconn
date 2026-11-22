@@ -189,6 +189,16 @@ export class NexconnClient {
     return this.bridge.on(event, listener);
   }
 
+  /**
+   * Number of `on(...)` listeners currently registered (for one event, or in
+   * total). A diagnostic for leak checks: it should return to its previous
+   * value after a screen using the hooks unmounts. Includes the client's own
+   * internal listeners.
+   */
+  listenerCount(event?: NexconnEventName): number {
+    return this.bridge.listenerCount(event);
+  }
+
   // Lifecycle ----------------------------------------------------------------
 
   /**

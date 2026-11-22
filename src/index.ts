@@ -27,6 +27,7 @@ export type {
   TokenProvider,
 } from './core/client.ts';
 export { PagedQuery } from './core/query.ts';
+export { replyTo, withMentions, mentionsUser } from './core/helpers.ts';
 export type { QueryKind } from './core/query.ts';
 export { NexconnError, isNexconnError } from './core/errors.ts';
 export type { NexconnErrorCategory } from './core/errors.ts';
