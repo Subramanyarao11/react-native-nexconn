@@ -54,4 +54,40 @@ missing; emulators are not evidence of delivery.
 
 ## Results
 
-_Not run yet._
+### Android (Ubuntu)
+
+Ubuntu 22.04, Node 24.22.2, Yarn 4.18.1, JDK 17, Android SDK 36/37, NDK
+27.1.12297006. Builds and C rows ran at `b025132`; `3fe30a3` changes only iOS
+files and `docs/STATUS.md`, so the Android results apply to it unchanged.
+Emulators: API 36 and API 35 (16 KB). Runtime rows used fresh CLI Debug APKs
+built from this branch (both installs SHA-256 `53138d62…7bf9c`) with Metro
+serving this branch, and two real Nexconn users. No source was changed.
+
+| Row | Result | Evidence |
+| --- | --- | --- |
+| B1 | Pass | 71/71 tests, typecheck, lint 0 errors (6 warnings), package build |
+| B2 CLI | Pass | Debug and Release build; R8 keeps SDK class names and `@MessageTag`; 16 KB alignment; `NexconnPushInitProvider` (not exported) in Debug and Release merged manifests |
+| B2 Expo release | Pass | R8 checks pass; `NexconnPushInitProvider` in the Release merged manifest |
+| B4 | Pass | `BUILD_NATIVE=android` packed CLI and Expo consumers build |
+| C1 | **Fail (as written)** | Allow → `granted`; a repeat returns `granted` with no dialog. Deny → `denied`, but the second request shows the system dialog again; after a second denial the third request returns `denied` with no dialog. This is Android's one-retry denial policy (`PermissionsAndroid`), but it contradicts the row's "no second dialog" criterion. Fix the code or the criterion. |
+| C2 | Pass | `getToken()` returns `null` on both emulators (no FCM); no crash, clients stay connected |
+| C4 | Pass | Fresh group, Alice and Bob on separate emulators. Bob's nickname set to `nick`; Alice calls `setMemberInfo(groupId, {userId: bob, extra: 'x'})` with no nickname (resolves, no rejected keys). `getMembers` reads `nick`/`x` on Alice's client and on Bob's own client, and again on Bob's after a UI disconnect/reconnect. Bob's client gets the member-change event with `nick`/`x`. The Android bridge reads the current nickname and resends it |
+| C5 | **Blocked** | `openChannels.enter('qa-pr5-c5')` rejects in 279 ms with `ChatroomNotExist` (native 23410) and a matching failure event. No existing room ID; the SDK cannot create or list rooms. Needs a room ID from the console |
+| C6 | Pass | Both sent through the demo's Send file UI and received once by the peer; peer `downloadMedia` resolved for both (1,714 ms and 649 ms). The `content://` URI came from `ACTION_OPEN_DOCUMENT` launched in the app's UID; its copy in `<cache>/nexconn-upload` is byte-identical to the 1,370-byte source (SHA-1 `607fb6de…61d5`). Downloads are the SDK's default 180×120 JPEG (no `original: true`), not the source PNG bytes |
+
+Observation (C6 setup): a URI picked in a picker launched outside the app has
+no grant for the app, so the send fails with a Permission Denial and nothing is
+copied. This is expected Android behaviour, not a bridge failure.
+
+Paired Android Alice / iOS Bob at `3fe30a3` (Android CLI Debug as above,
+iOS from the Mac):
+
+| Row | Result | Evidence |
+| --- | --- | --- |
+| X3 Sent → Read | Pass | `3FE-X3-A2I-0926` (ID `D20A-ANJ3-7PO4-2VDL`, `needReceipt: true`) sent at 09:28:00Z while Bob's chat was closed; bubble Sent, `sentStatus` 30. Bob opened the chat at 09:28:56.649Z. Android got one native receipt at 09:28:58.385Z (generation 1, forwarded) and one matching JS receipt at .394Z (read 1/1). The bubble showed Read by 09:28:59.016Z (under 398 ms after the native receipt), with no Refresh, reconnect or reopen. Read persisted after close/reopen |
+| Image Android → iOS | Pass | Sent with the Send file UI (ID `D20A-CDE5-8MA4-2VDL`, PNG 320×180, 6,700 bytes). iOS received it once live; SDK download took 688 ms, no fallback. Without `original: true` the result is a 320×180 JPEG (20,143 bytes) |
+| Image iOS → Android | Pass | Bob sent a 128×96 PNG, 27,326 bytes (ID `D20A-CRF1-R6U4-J5K0`). Android received it once (native 09:32:37.936Z, JS .943Z) as a live bubble; `downloadMedia` took 2,480 ms, no fallback. The download is byte-identical to the source (SHA-1 `6c3855e5…de24`) |
+
+Physical-device push P1–P7 (Android): not run. No FCM project,
+`google-services.json` or signed physical-device build was available;
+emulator results are not evidence of push delivery.

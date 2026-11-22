@@ -205,6 +205,22 @@ Release). The next commit imports UserNotifications in `Nexconn.mm` and adds
 `s.frameworks = "UserNotifications"` to the podspec. This fix is not compiled
 yet. The Mac still needs to rerun B3 (CLI and Expo Release), B4 and C1–C5.
 
+Android results (Ubuntu; builds and C rows at `b025132`, which has the same
+Android and JS code as `3fe30a3`):
+B1, B2 (CLI and Expo Release, R8 checks, `NexconnPushInitProvider` in the
+merged manifests) and B4 pass. On emulators, C2, C4 (verified on the caller's
+and the member's own client, including after reconnect) and C6 (`content://`
+picker and `file:///` images, cache copy in `nexconn-upload`) pass. C1 fails
+as written: after one denial Android shows the permission dialog again
+(Android's one-retry policy); a second denial is then returned without a
+dialog. C5 is blocked: no open-channel room exists (`ChatroomNotExist`,
+23410), and the SDK can't create one. Paired Android/iOS at `3fe30a3`: X3
+Sent → Read passes (under 398 ms after the receipt, no Refresh), and one
+image each way downloads (iOS → Android byte-identical PNG; Android → iOS
+JPEG because the demo doesn't request `original: true`). Physical push
+P1–P7 was not run (no FCM, APNs or signed device build). Details:
+[cloud session 3 results](CLOUD_SESSION_3.md#android-ubuntu).
+
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
 in this run from previous revisions. They do not establish full
 L1–L16 device coverage, official-client interoperability, or physical-device
