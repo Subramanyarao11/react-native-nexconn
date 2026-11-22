@@ -71,3 +71,14 @@ JavaScript changes reload without a rebuild; native changes need one.
 - Update `CHANGELOG.md` under "Unreleased" for user-visible changes.
 - Never commit credentials, tokens, `google-services.json`, signing keys or
   build products.
+
+## Releasing (maintainer)
+
+1. Update `version` in `package.json` and move the "Unreleased" entries in
+   `CHANGELOG.md` under that version.
+2. Merge to `main`, then create a GitHub release with the tag `v<version>`.
+   The Release workflow publishes to npm with provenance: to `latest`, or to
+   `next` if the release is marked as a pre-release. Versions already on npm
+   are skipped. It needs the `NPM_TOKEN` repository secret.
+3. To publish by hand instead, run `npm publish --access public --tag latest`
+   from `main`. npm requires an explicit tag for versions like `0.2.0-beta.0`.
