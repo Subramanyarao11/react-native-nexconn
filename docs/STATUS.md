@@ -164,6 +164,13 @@ Branch `fix/session-restore-recall-release`; test plan in
   No new Android Expo release runtime claim was made. See the
   [follow-up results](STATUS_SESSION_2.md#android-follow-up-at-d2d667f-november-2122-utc).
 
+- At `ec16c9f` (`3c8c76c` X3 fix plus docs), the paired X3 retest passed:
+  Android received exactly one matching iOS read receipt and the open bubble
+  changed from Sent to Read within one second without Refresh, reconnecting
+  or reopening, and stayed Read after reopening. The SDK still reports
+  `sentStatus=30`, so Read comes from stored receipt counts. See the
+  [X3 retest](STATUS_SESSION_2.md#x3-retest-at-ec16c9f-november-22-utc).
+
 - At `d2d667f`, the Mac passed the iOS CLI and Expo Release builds, T9/T10
   account-switch recall, T12 (typing, JS reload, live and offline delivery),
   the iOS sender edit, and Release R3–R5. The Release sender image now appears

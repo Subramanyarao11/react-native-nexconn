@@ -1,5 +1,28 @@
 # Cloud session 2 — Android and iOS retests
 
+## X3 retest at `ec16c9f` (November 22 UTC)
+
+`ec16c9f` is `3c8c76c` ("show Read from SDK receipt counts") plus docs. The
+change is JavaScript-only (`src/react`, `examples/shared/DemoApp.tsx`), so
+both sides reused their unchanged `d2d667f` native apps with Metro serving
+`ec16c9f`; each side confirmed the new receipt-state code was in the bundle.
+Android ran the `d2d667f` CLI debug APK (SHA-256
+`99fb00a91b10a28ebc9451bda11bee119f2070c4a8ec1cd83df6deea5aeff75d`).
+
+| Case | Result |
+| --- | --- |
+| X3 — iOS read receipt to Android | **Pass.** Android Alice sent `EC16-X3-A2I-1401` once from the UI with `needReceipt=true`; it visibly showed Sent while Bob's chat was closed. iOS Bob received it natively at 07:38:09.856 UTC (generation 1, forwarded to JS) and opened the DM on cue between 07:39:05.612 and 07:39:11.409 UTC; the message (ID `D208-OEKC-OI04-2VDL`) appeared once, without Refresh. Android logged exactly one native `onMessageReceiptResponse gen=1 js=true` at 07:39:09.144 UTC and one matching JS `readReceiptResponse` at 07:39:09.214 (read 1, total 1, unread 0). The bubble changed from Sent to Read without Refresh, reconnecting or reopening. The clock-calibrated upper bound from native receipt to visible Read was 968 ms (898 ms from the JS event); this bound includes capture and clock uncertainty. After the live criterion was judged, closing and reopening the DM kept Read. |
+
+The SDK's `getById` still returns `sentStatus=30` for the same message, so
+Read comes from the receipt counts the hook now stores, not from the SDK's
+sent status.
+
+The run used Android Alice and iOS Bob only; Carol was unused. Afterwards,
+Alice disconnected through the UI, the Android apps were stopped and
+data-cleared, and no app process, ADB reverse mapping, Metro/token service
+or collector remained. All accounts were released to iOS. Other PR rows,
+standalone release builds, location and push were not repeated.
+
 ## Android follow-up at `d2d667f` (November 21–22 UTC)
 
 | Case | Result |
@@ -12,7 +35,7 @@
 | X4 — iOS → Android original PNG | **Pass.** iOS sent the 128×96 PNG with the real SDK and `original:true`. Android's real `message.downloadMedia` resolved in 2,693 ms with progress 0 → 27 → 57 → 61 → 100. The file at the returned local path was a PNG, 27,326 bytes, SHA-1 `6c3855e59e98ff85f2468a38f68bf5846cc7de24`, matching iOS's SDK-local source exactly. The result had no `fallback` key (`false`); no watchdog or error occurred, so the new watchdog fallback itself was not exercised. |
 | X6 — Edit from iOS | **Pass (Android recipient).** With the chat kept open, Android logged exactly one native `onMessagesUpdated gen=1 js=true` at 06:53:06.557 UTC on November 22, then exactly one matching JS `messagesUpdated` at 06:53:06.559. The saved ID stayed the same, `D2IOSX6AFTER1304 · edited` appeared once, and the original text disappeared without Refresh or reopening. The Mac separately verified the sender's immediate update. |
 
-### Remaining X3 fix handoff
+### X3 fix handoff (fixed in `3c8c76c`; see the `ec16c9f` retest above)
 
 The post-receipt real SDK `getById` still returned `sentStatus=30` (Sent),
 although the receipt reported `readCount=1`, `totalCount=1`, `unreadCount=0`.
