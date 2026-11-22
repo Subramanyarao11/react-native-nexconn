@@ -416,6 +416,9 @@ describe('network drops keep hook data', () => {
     });
     await h.connect();
     await flush();
+    await act(async () => {
+      h.transport.emit('OpenChannelHandler.onEntered', { channelId: 'room' });
+    });
     await h.disconnected();
     await h.reconnected();
     await flush();
@@ -451,4 +454,18 @@ describe('network drops keep hook data', () => {
     expect(calls(h.transport, 'channel.getChannels')).toHaveLength(1);
     expect(result.current.draft.draft).toBe('kept');
   });
+});
+
+test('useOpenChannel exits on unmount even while the enter is still pending', async () => {
+  const h = setup();
+  h.transport.on('open.enter', () => new Promise(() => undefined));
+  h.transport.on('open.exit', () => null);
+  const view = await renderHook(() => useOpenChannel('room'), {
+    wrapper: h.wrapper,
+  });
+  await h.connect();
+  await flush();
+  expect(view.result.current.status).toBe('entering');
+  await view.unmount();
+  expect(calls(h.transport, 'open.exit')).toHaveLength(1);
 });

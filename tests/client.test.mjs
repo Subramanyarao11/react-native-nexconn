@@ -301,3 +301,31 @@ test('initialize after a JS reload restores the native session', async () => {
   assert.equal(client.getSnapshot().userId, 'bob');
   assert.equal(client.getSnapshot().generation, 2);
 });
+
+test('open channel enter resolves with the Android onEntered response', async () => {
+  const { client, transport } = initialized();
+  await client.initialize({ appKey: 'k' });
+  transport.on('open.enter', () => {
+    setImmediate(() => {
+      transport.emit('OpenChannelHandler.onEntered', { channelId: 'other', response: { participantCount: 1 } });
+      transport.emit('OpenChannelHandler.onEntered', { channelId: 'room', response: { participantCount: 7 } });
+    });
+    return null;
+  });
+  const response = await client.openChannels.enter('room');
+  assert.equal(response.participantCount, 7);
+});
+
+test('open channel enter rejects on a matching onEnterFailed and times out to undefined', async () => {
+  const { client, transport } = initialized();
+  await client.initialize({ appKey: 'k' });
+  transport.on('open.enter', () => {
+    setImmediate(() =>
+      transport.emit('OpenChannelHandler.onEnterFailed', { channelId: 'room', error: { code: 23410, message: 'nope' } })
+    );
+    return null;
+  });
+  await assert.rejects(client.openChannels.enter('room'), (e) => e.category === 'native' && e.nativeCode === 23410);
+  transport.on('open.enter', () => null);
+  assert.equal(await client.openChannels.enter('quiet', { responseTimeoutMs: 5 }), undefined);
+});

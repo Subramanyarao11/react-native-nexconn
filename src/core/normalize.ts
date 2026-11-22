@@ -15,6 +15,8 @@ import type {
   NativeErrorInfo,
   NexconnEventMap,
   NexconnEventName,
+  PushNotification,
+  PushToken,
   StringMap,
 } from './types.ts';
 import type { ChannelType } from './enums.ts';
@@ -621,7 +623,156 @@ const EVENT_NAMES: Readonly<
   'UserSettingsHandler.onUserSettingsSyncCompleted': [
     'userSettingsSyncCompleted',
   ],
+
+  'Push.onNotificationOpened': [
+    'notificationOpened',
+    normalizePushNotification,
+  ],
+  'Push.onNotificationReceived': [
+    'notificationReceived',
+    normalizePushNotification,
+  ],
+  'Push.onTokenReceived': ['pushTokenReceived', normalizePushToken],
+  'Push.onTokenError': [
+    'pushTokenError',
+    (p) => ({
+      pushType: str(p.pushType),
+      code: num(p.code),
+      message: str(p.message),
+      platform: p.platform === 'ios' ? 'ios' : 'android',
+    }),
+  ],
+  'Push.onTokenReportResult': [
+    'pushTokenReportResult',
+    (p) => ({
+      pushType: str(p.pushType),
+      code: num(p.code),
+      finalPushType: str(p.finalPushType),
+    }),
+  ],
 };
+
+/** Push events only one platform's push stack produces. */
+export const PLATFORM_ONLY_EVENT_TYPES: Readonly<
+  Record<string, 'android' | 'ios'>
+> = { 'Push.onTokenReportResult': 'android' };
+
+const CHANNEL_TYPE_VALUES = new Set([1, 3, 4, 6, 10]);
+
+/** Normalizes a native push notification record (see `PushNotification`). */
+export function normalizePushNotification(p: Rec): PushNotification {
+  const channelType = optNum(p.channelType);
+  const out: Record<string, unknown> = {
+    id: str(p.id) ?? '',
+    platform: p.platform === 'ios' ? 'ios' : 'android',
+    raw: isRecord(p.raw) ? p.raw : {},
+  };
+  if (channelType !== undefined && CHANNEL_TYPE_VALUES.has(channelType)) {
+    out.channelType = channelType;
+  }
+  for (const key of [
+    'pushType',
+    'channelId',
+    'senderId',
+    'senderName',
+    'pushId',
+    'objectName',
+    'title',
+    'body',
+    'pushData',
+    'extra',
+    'notificationId',
+    'actionIdentifier',
+  ] as const) {
+    const value = str(p[key]);
+    if (value !== undefined && value !== '') out[key] = value;
+  }
+  const receivedTime = optNum(p.receivedTime);
+  if (receivedTime !== undefined && receivedTime > 0) {
+    out.receivedTime = receivedTime;
+  }
+  return out as unknown as PushNotification;
+}
+
+const APNS_CHANNEL_TYPES: Readonly<Record<string, number>> = {
+  PR: 1,
+  GRP: 3,
+  CR: 4,
+  SYS: 6,
+  UG: 10,
+};
+
+/**
+ * Parses a Nexconn APNs payload delivered through another notification
+ * library (e.g. `expo-notifications` `request.content.data`, or a full
+ * `userInfo`). Looks for the Nexconn `rc` record at the top level or under
+ * `data`/`body`. Returns undefined for non-Nexconn payloads. Mirrors the
+ * native iOS mapping; the `rc` keys (`cType`, `tId`, `fId`, `oName`, `id`)
+ * follow the RongCloud APNs format and are not yet verified on a device.
+ */
+export function parseNexconnPushPayload(
+  payload: unknown,
+  extra: {
+    readonly title?: string;
+    readonly body?: string;
+    readonly id?: string;
+  } = {}
+): PushNotification | undefined {
+  if (!isRecord(payload)) return undefined;
+  const candidates = [payload, payload.data, payload.body].filter(isRecord);
+  let rc: Rec | undefined;
+  let root: Rec = payload;
+  for (const candidate of candidates) {
+    let value = candidate.rc;
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        value = undefined;
+      }
+    }
+    if (isRecord(value)) {
+      rc = value;
+      root = candidate;
+      break;
+    }
+  }
+  if (!rc) return undefined;
+  const aps = isRecord(root.aps) ? root.aps : undefined;
+  const alert = aps?.alert;
+  const title = extra.title ?? (isRecord(alert) ? str(alert.title) : undefined);
+  const body =
+    extra.body ??
+    (isRecord(alert)
+      ? str(alert.body)
+      : typeof alert === 'string'
+        ? alert
+        : undefined);
+  const cType = str(rc.cType);
+  return normalizePushNotification({
+    id: extra.id ?? `js-${str(rc.id) ?? Date.now().toString(36)}`,
+    platform: 'ios',
+    pushType: 'apns',
+    channelType: cType ? APNS_CHANNEL_TYPES[cType] : undefined,
+    channelId: rc.tId,
+    senderId: rc.fId,
+    objectName: rc.oName,
+    pushId: rc.id,
+    title,
+    body,
+    pushData: root.appData,
+    raw: root,
+  });
+}
+
+/** Normalizes a native push token record, or undefined if there is none. */
+export function normalizePushToken(p: Rec): PushToken {
+  return {
+    token: str(p.token) ?? '',
+    pushType: str(p.pushType),
+    platform: p.platform === 'ios' ? 'ios' : 'android',
+  };
+}
 
 /** All native handler events the bridge is expected to forward. */
 export const NATIVE_EVENT_TYPES: readonly string[] = Object.keys(EVENT_NAMES);

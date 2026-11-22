@@ -6,7 +6,10 @@
  * Test doubles: `react-native-nexconn/testing`.
  */
 import { NexconnClient } from './core/client.ts';
-import { createNativeTransport } from './nativeTransport.ts';
+import {
+  createNativeTransport,
+  requestAndroidNotificationPermission,
+} from './nativeTransport.ts';
 
 let sharedClient: NexconnClient | undefined;
 
@@ -16,7 +19,12 @@ let sharedClient: NexconnClient | undefined;
  * intentionally no way to create a second native-backed client.
  */
 export function getNexconnClient(): NexconnClient {
-  if (!sharedClient) sharedClient = new NexconnClient(createNativeTransport());
+  if (!sharedClient) {
+    sharedClient = new NexconnClient(createNativeTransport());
+    sharedClient.push.setAndroidPermissionRequester(
+      requestAndroidNotificationPermission
+    );
+  }
   return sharedClient;
 }
 
@@ -39,6 +47,8 @@ export { MessagesModule } from './core/modules/messages.ts';
 export type { DownloadCallbacks } from './core/modules/messages.ts';
 export { GroupsModule } from './core/modules/groups.ts';
 export { OpenChannelsModule } from './core/modules/openChannels.ts';
+export { PushModule } from './core/modules/push.ts';
+export type { AndroidPermissionRequester } from './core/modules/push.ts';
 export { CommunityModule } from './core/modules/community.ts';
 export { UsersModule } from './core/modules/users.ts';
 export { TranslationModule } from './core/modules/translation.ts';

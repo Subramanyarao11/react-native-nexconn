@@ -242,6 +242,7 @@ internal object NexconnBridge {
     registerUsers()
     registerTranslateAndTags()
     registerQueries()
+    registerPush()
   }
 
   // -------------------------------------------------------------------------
@@ -251,6 +252,15 @@ internal object NexconnBridge {
   fun attach(context: Context, emit: (String) -> Unit) {
     appContext = context.applicationContext
     emitter = emit
+    // Normally already installed by NexconnPushInitProvider; no-op then.
+    NexconnPush.install()
+  }
+
+  /** Emits a push event; returns whether a JS runtime was attached. */
+  internal fun emitPush(type: String, payload: Any?): Boolean {
+    val attached = emitter != null
+    emit(type, payload, null)
+    return attached
   }
 
   fun detach(emit: (String) -> Unit) {
@@ -263,7 +273,7 @@ internal object NexconnBridge {
     val call = Call(method, resolve, reject)
     try {
       val handler = methods[method] ?: throw unsupported(method)
-      if (!method.startsWith("engine.") && initializedAppKey == null) {
+      if (!method.startsWith("engine.") && !method.startsWith("push.") && initializedAppKey == null) {
         throw BridgeException("not_initialized", "Call initialize() before $method")
       }
       val args = if (argsJson.isBlank()) JSONObject() else JSONObject(argsJson)
@@ -521,7 +531,7 @@ internal object NexconnBridge {
 
   private fun readBase64(path: String?): String? {
     if (path.isNullOrEmpty()) return null
-    val file = File(path.removePrefix("file://"))
+    val file = File(resolveLocalPath(path))
     if (!file.isFile) throw invalidArg("Thumbnail file not found: $path")
     return Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
   }
@@ -547,10 +557,46 @@ internal object NexconnBridge {
     }
   }
 
+  /**
+   * Accepts a plain absolute path, a `file://` URI or a `content://` URI (as
+   * returned by document/image pickers) and returns a readable file path. A
+   * `content://` source is copied into `<cache>/nexconn-upload/` because the
+   * SDK's native core reads files by path.
+   */
+  private fun resolveLocalPath(raw: String): String {
+    val uri = android.net.Uri.parse(raw)
+    val path = when (uri.scheme?.lowercase()) {
+      "content" -> copyContentUri(uri)
+      "file" -> uri.path ?: throw invalidArg("Invalid file URI: $raw")
+      null, "" -> raw
+      else -> throw invalidArg("Unsupported localPath scheme: ${uri.scheme}")
+    }
+    return path
+  }
+
+  private fun copyContentUri(uri: android.net.Uri): String {
+    val ctx = appContext ?: throw BridgeException("internal", "No Android context")
+    val resolver = ctx.contentResolver
+    var name: String? = null
+    try {
+      resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) name = cursor.getString(0)
+      }
+    } catch (_: Throwable) {
+      // Name is cosmetic; fall back below.
+    }
+    val safe = (name ?: uri.lastPathSegment ?: "upload").replace(Regex("[^A-Za-z0-9._-]"), "_").take(120)
+    val dir = File(ctx.cacheDir, "nexconn-upload").apply { mkdirs() }
+    val target = File(dir, "${System.currentTimeMillis()}-$safe")
+    val input = resolver.openInputStream(uri) ?: throw invalidArg("Cannot open $uri")
+    input.use { source -> target.outputStream().use { source.copyTo(it) } }
+    return target.absolutePath
+  }
+
   private fun applyMedia(content: MediaMessageContent, o: JSONObject, requirePath: Boolean = true) {
-    val path = o.str("localPath")
-    if (requirePath && path.isNullOrEmpty()) throw invalidArg("content.localPath is required")
-    path?.let { content.localPath = it }
+    val path = o.str("localPath")?.takeIf { it.isNotEmpty() }
+    if (requirePath && path == null) throw invalidArg("content.localPath is required")
+    path?.let { content.localPath = resolveLocalPath(it) }
     o.str("remoteUrl")?.let { content.remoteUrl = it }
     o.str("name")?.let { content.name = it }
   }
@@ -823,6 +869,38 @@ internal object NexconnBridge {
     }
     on("engine.getPushContentShowStatus") { _, c -> NCEngine.getPushContentShowStatus(result<Boolean>(c)) }
     // engine.setDeviceToken: iOS only (Android tokens come from the push plugin).
+  }
+
+  // -------------------------------------------------------------------------
+  // push.* (usable before initialize; see NexconnPush)
+  // -------------------------------------------------------------------------
+
+  private fun registerPush() {
+    on("push.getInitialNotification") { _, c -> c.resolve(NexconnPush.takeInitialNotification()) }
+    on("push.getToken") { _, c -> c.resolve(NexconnPush.lastToken) }
+    on("push.getPermissionStatus") { _, c ->
+      val context = appContext ?: throw BridgeException("internal", "No Android context")
+      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+      val enabled = manager.areNotificationsEnabled()
+      c.resolve(mapOf("status" to if (enabled) "granted" else "denied", "platform" to "android"))
+    }
+    on("push.clearNotifications") { _, c ->
+      val context = appContext ?: throw BridgeException("internal", "No Android context")
+      io.rong.push.RongPushClient.clearAllNotifications(context)
+      c.resolve(null)
+    }
+    on("push.clearNotification") { a, c ->
+      val context = appContext ?: throw BridgeException("internal", "No Android context")
+      val id = a.reqStr("notificationId").toIntOrNull()
+        ?: throw invalidArg("notificationId must be an integer string on Android")
+      io.rong.push.RongPushClient.clearNotificationById(context, id)
+      c.resolve(null)
+    }
+    on("push.getPushType") { _, c ->
+      val context = appContext ?: throw BridgeException("internal", "No Android context")
+      c.resolve(io.rong.push.RongPushClient.getCurrentPushType(context)?.getName())
+    }
+    // push.requestPermission: handled in JS on Android (PermissionsAndroid).
   }
 
   // -------------------------------------------------------------------------
@@ -1172,18 +1250,29 @@ internal object NexconnBridge {
     }
     on("message.refreshReference") { a, c ->
       val local = ArrayList<ReferenceMessageResult>()
+      // The SDK may never call the remote handler (e.g. offline); resolve with
+      // the local results and timedOut=true instead of hanging forever.
+      val timeoutMs = (a.long("timeoutMs") ?: 15_000L).coerceIn(1_000L, 120_000L)
+      val timeout = Runnable {
+        c.resolve(mapOf("local" to synchronized(local) { ArrayList(local) }, "remote" to emptyList<Any>(), "timedOut" to true))
+      }
+      mainHandler.postDelayed(timeout, timeoutMs)
       BaseChannel.refreshReferenceMessage(
         RefreshReferenceMessageParams(identifierOf(a.reqObj("channel")), a.reqStrings("messageIds")),
         object : RefreshReferenceMessageHandler {
           override fun onLocalMessages(results: List<ReferenceMessageResult>) {
-            local.addAll(results)
+            synchronized(local) { local.addAll(results) }
           }
 
           override fun onRemoteMessages(results: List<ReferenceMessageResult>) {
-            c.resolve(mapOf("local" to local, "remote" to results))
+            mainHandler.removeCallbacks(timeout)
+            c.resolve(mapOf("local" to synchronized(local) { ArrayList(local) }, "remote" to results, "timedOut" to false))
           }
 
-          override fun onError(error: NCError) = c.native(error, mapOf("local" to local))
+          override fun onError(error: NCError) {
+            mainHandler.removeCallbacks(timeout)
+            c.native(error, mapOf("local" to synchronized(local) { ArrayList(local) }))
+          }
         },
       )
     }
@@ -1280,9 +1369,27 @@ internal object NexconnBridge {
     }
     on("group.getMembers") { a, c -> group(a).getMembers(a.reqStrings("userIds"), result<List<GroupMemberInfo>>(c)) }
     on("group.setMemberInfo") { a, c ->
-      group(a).setMemberInfo(
-        SetGroupMemberInfoParams(a.reqStr("userId"), a.str("nickname") ?: "", a.str("extra")),
-        detailHandler(c),
+      val channel = group(a)
+      val userId = a.reqStr("userId")
+      val extra = a.str("extra")
+      val nickname = a.str("nickname")
+      if (nickname != null) {
+        channel.setMemberInfo(SetGroupMemberInfoParams(userId, nickname, extra), detailHandler(c))
+        return@on
+      }
+      // Android requires a nickname; keep the member's current one rather than
+      // clearing it. iOS does the same (its SDK clears a nil nickname).
+      channel.getMembers(
+        listOf(userId),
+        object : OperationHandler<List<GroupMemberInfo>> {
+          override fun onResult(result: List<GroupMemberInfo>?, error: NCError?) {
+            if (failed(error)) return c.native(error)
+            guarded(c) {
+              val current = result?.firstOrNull { it.userId == userId }?.nickname ?: ""
+              channel.setMemberInfo(SetGroupMemberInfoParams(userId, current, extra), detailHandler(c))
+            }
+          }
+        },
       )
     }
     on("group.addFavorites") { a, c -> group(a).addFavorites(a.reqStrings("userIds"), errorHandler(c)) }

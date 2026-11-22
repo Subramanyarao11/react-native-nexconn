@@ -23,7 +23,7 @@ if the installed app is from `main`.
 
 | # | Command | Pass |
 | --- | --- | --- |
-| B1 | `bash scripts/cloud/verify-js.sh` | 66/66 unit tests, 19/19 hook tests (`test:react`), the bench prints its table without assertion failures, typecheck, lint 0 errors, build, Codegen |
+| B1 | `bash scripts/cloud/verify-js.sh` | 81/81 unit tests, 20/20 hook tests (`test:react`), the bench prints its table without assertion failures, typecheck, lint 0 errors, build, Codegen |
 | B2 | `bash scripts/cloud/verify-packed-consumers.sh` | Pass. The consumer check now imports every new hook and helper from the tarball |
 | B3 (Ubuntu) | `bash scripts/cloud/verify-android.sh cli` | Builds and the R8 checks pass (expected to be unchanged) |
 | B4 (Mac) | `bash scripts/cloud/verify-ios.sh cli` | Builds (expected to be unchanged) |

@@ -6,8 +6,10 @@ Last updated 22 November 2026.
 
 The SDK is **implemented at source level for the full public surface of the
 pinned Nexconn native SDKs** (Android `ai.nexconn.chat:chat:26.4.2`, iOS
-`NexconnChat/Chat 26.4.2`): 151 bridge methods, 18 paged query kinds and 62
-SDK event types, with 6 documented platform-only gaps (docs/PARITY.md).
+`NexconnChat/Chat 26.4.2`): 159 bridge methods, 18 paged query kinds and 67
+event types (62 SDK handler events plus 5 push events), with 8 documented
+platform-only methods and 1 Android-only push event (docs/PARITY.md).
+Comparison with the Flutter SDK: [FLUTTER_PARITY.md](FLUTTER_PARITY.md).
 
 Both native bridges have connected to Nexconn from the CLI fixtures on
 Android emulators and an iOS simulator. The Android CLI and Expo fixtures
@@ -47,6 +49,13 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
   idempotent initialize across JS reloads, de-duplicated connect, `busy` for
   concurrent native connects, session generation filtering, query/message
   handles cleared per session, emitter detached on module invalidation.
+- Push notifications (branch `feat/push-and-sdk-fixes`, source only, not
+  built): `client.push` (permission, token, initial/opened notification,
+  clear, Android push type, payload parser for `expo-notifications`), push
+  events, `useNotificationOpened`. Android installs a forwarding RongPush
+  listener at process start (`NexconnPushInitProvider`); iOS adds AppDelegate
+  helpers and an opt-in forwarding notification delegate. See
+  [PUSH.md](PUSH.md).
 - Expo config plugin (Maven repo, optional FCM wiring, notification-tap
   intent filters, optional APNs entitlement/background mode, SDK version pin),
   idempotent edits.
@@ -63,7 +72,7 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
 | Check | Result |
 | --- | --- |
 | `yarn install --immutable` (Yarn 4.18.1, Node 24.22.2) | pass |
-| `yarn test` — 49 tests (normalization, client lifecycle, stores, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
+| `yarn test` — 72 tests on 22 Nov 2026 (normalization, client lifecycle, stores, push, plugin, wire-protocol contract that parses the Kotlin and Swift sources) | pass |
 | `yarn typecheck` (library, examples, shared demo) | pass |
 | `yarn lint` | 0 errors, 6 `no-void` warnings |
 | `yarn build` (Bob module + typings, `.ts` imports rewritten) | pass |
@@ -189,8 +198,8 @@ run on devices yet; device rows H1–H11 are in
 
 | Check | Result |
 | --- | --- |
-| `yarn test` | 66/66 pass |
-| `yarn test:react`: rendered hook tests with React Native Testing Library 14.1.0, Jest 29.7.0 and `@react-native/jest-preset` 0.88.1 | 19/19 pass |
+| `yarn test` | 81/81 pass (after merging PR #5) |
+| `yarn test:react`: rendered hook tests with React Native Testing Library 14.1.0, Jest 29.7.0 and `@react-native/jest-preset` 0.88.1 | 20/20 pass |
 | `yarn typecheck`, including `tests/types/public-api.tsx` (every public hook and helper) | pass |
 | `yarn lint` | 0 errors, 0 warnings |
 | `yarn build` | pass |
@@ -212,6 +221,58 @@ the list stays bounded, has no duplicates, and that subscribe/unsubscribe
 churn leaves `client.listenerCount()` at its baseline.
 
 ## Pending verification (cloud VMs / devices)
+
+Branch `feat/push-and-sdk-fixes` (PR #5, based on `main`) changes native code that
+has not been compiled. Build both platforms, then run the rows in
+[cloud session 3](CLOUD_SESSION_3.md): C1–C6 for the code fixes and P1–P7
+from [PUSH.md](PUSH.md), which need physical devices.
+
+Results at `b025132`: on the Mac, B1 passed (71/71 JS tests, typecheck, lint
+with 0 errors). B3 CLI failed (Xcode 26.6, iOS 26.5 simulator SDK, exit 65)
+because `ios/Nexconn.mm` imported `Nexconn-Swift.h` without UserNotifications,
+and that header uses `UNUserNotificationCenterDelegate` and
+`UNNotificationPresentationOptions`. On Ubuntu, B1 and B2 passed (CLI and Expo
+Release). The next commit imports UserNotifications in `Nexconn.mm` and adds
+`s.frameworks = "UserNotifications"` to the podspec (`3fe30a3`).
+
+Android results (Ubuntu; builds and C rows at `b025132`, which has the same
+Android and JS code as `3fe30a3`):
+B1, B2 (CLI and Expo Release, R8 checks, `NexconnPushInitProvider` in the
+merged manifests) and B4 pass. On emulators, C2, C4 (verified on the caller's
+and the member's own client, including after reconnect) and C6 (`content://`
+picker and `file:///` images, cache copy in `nexconn-upload`) pass. C1 fails
+as written: after one denial Android shows the permission dialog again
+(Android's one-retry policy); a second denial is then returned without a
+dialog. C5 is blocked: no open-channel room exists (`ChatroomNotExist`,
+23410), and the SDK can't create one. Paired Android/iOS at `3fe30a3`: X3
+Sent → Read passes (under 398 ms after the receipt, no Refresh), and one
+image each way downloads (iOS → Android byte-identical PNG; Android → iOS
+JPEG because the demo doesn't request `original: true`). Physical push
+P1–P7 was not run (no FCM, APNs or signed device build). Details:
+[cloud session 3 results](CLOUD_SESSION_3.md#android-ubuntu).
+
+iOS results (Mac, `3fe30a3`, Xcode 26.6, iOS 26.5 simulators): B3 (CLI and
+Expo Release) and B4 pass; `NexconnPush.swift` and the CLI AppDelegate's
+`#if canImport(Nexconn)` path compile. C1 and C2 pass (simulator token request
+returns `null` plus `pushTokenError`). C3 routing passes warm and cold with no
+double open, but the Playground log keeps no `notificationOpened` line and the
+cold path emits no generic event. C4 fails on iOS: an extra-only
+`setMemberInfo` clears the member's nickname on the server, because the iOS
+bridge omits it. C5 is blocked (no room ID, 23410). Physical push P1–P7 was not
+run. Details: [cloud session 3 results](CLOUD_SESSION_3.md#ios-mac).
+
+Follow-up after these results (needs re-verification):
+- **C4 iOS:** fixed in source. The iOS bridge now re-reads the member and
+  resends the current nickname when `setMemberInfo` omits it. It hasn't been
+  compiled or run yet. A contract test checks that both bridges keep this
+  fallback.
+- **C1 Android:** the criterion now describes Android's one-retry denial
+  policy. No code change.
+- **C3 iOS:** the demo logs routed taps (warm and cold) in a log that
+  survives navigation, and the criterion now describes routing.
+- **C5:** still blocked until a room ID is available.
+
+See the [follow-up table](CLOUD_SESSION_3.md#follow-up-fixes-after-the-results).
 
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
 in this run from previous revisions. They do not establish full
@@ -236,12 +297,22 @@ push; FCM and physical push were out of scope.
   or `error.code == 0`.
 - Android delivers the open-channel enter response only via the
   `openChannelEntered` event; iOS also resolves `enter()` with it.
-- `refreshReferenceMessages` resolves when the remote result arrives; if the
-  SDK never calls the remote handler the promise stays pending.
-- Group `setMemberInfo` on Android requires a nickname; the bridge passes `""`
-  when none is given, which may clear an existing nickname.
-- Media `localPath` is passed through; the SDKs' accepted path/URI forms must
-  be confirmed on devices (`file://` is stripped on iOS).
+- `refreshReferenceMessages` resolves with `timedOut: true` and local
+  results after `timeoutMs` (default 15 s) if the SDK never calls the remote
+  handler (branch `feat/push-and-sdk-fixes`).
+- Group `setMemberInfo` without a nickname reads the member's current
+  nickname first and resends it, because both SDKs clear an omitted nickname.
+  Verified on Android (C4); the iOS fix is in source and needs
+  re-verification.
+- `openChannels.enter` resolves with the enter response on both platforms; on
+  Android the bridge waits for `onEntered` (default 10 s) (same branch).
+- Media `localPath`: both platforms accept absolute paths and `file://` URIs;
+  Android copies `content://` URIs into the app cache first (same branch).
+  The forms each SDK accepts still need confirming on devices.
+- Push: builds pass on both platforms and simulator/emulator rows C1–C3
+  ran; delivery on physical devices (P1–P7) has not been tested. Flutter-only APIs with
+  no native 26.4.2 equivalent (`destroy`, runtime `setLogLevel`, group
+  `setRemark`) are not available ([FLUTTER_PARITY.md](FLUTTER_PARITY.md)).
 - Rendered hook tests run against the mock transport (`tests/react`). They
   don't replace device runs of the same flows.
 - `useMessages().retry` is offered only after the SDK's stored copy reports

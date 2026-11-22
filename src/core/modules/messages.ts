@@ -499,17 +499,28 @@ export class MessagesModule {
   }
 
   /** Refreshes quoted (reference) messages; resolves after remote results. */
+  /**
+   * Refreshes the referenced (quoted) messages. Resolves when the remote
+   * result arrives, or after `timeoutMs` (default 15 s) with the local
+   * results only and `timedOut: true`.
+   */
   async refreshReferenceMessages(
     channel: ChannelIdentifier,
-    messageIds: readonly string[]
+    messageIds: readonly string[],
+    options: { readonly timeoutMs?: number } = {}
   ): Promise<{
     local: ReferenceRefreshResult[];
     remote: ReferenceRefreshResult[];
+    timedOut: boolean;
   }> {
-    const raw = await this.bridge.invoke('message.refreshReference', {
-      channel: encodeChannel(channel),
-      messageIds: requireStringList(messageIds, 'messageIds'),
-    });
+    const raw = await this.bridge.invoke(
+      'message.refreshReference',
+      compact({
+        channel: encodeChannel(channel),
+        messageIds: requireStringList(messageIds, 'messageIds'),
+        timeoutMs: options.timeoutMs,
+      })
+    );
     const record = isRecord(raw) ? raw : {};
     const mapResult = (v: unknown): ReferenceRefreshResult => {
       const r = isRecord(v) ? v : {};
@@ -525,6 +536,7 @@ export class MessagesModule {
       remote: (Array.isArray(record.remote) ? record.remote : []).map(
         mapResult
       ),
+      timedOut: record.timedOut === true,
     };
   }
 }

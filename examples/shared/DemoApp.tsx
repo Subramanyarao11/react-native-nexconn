@@ -8,7 +8,7 @@
  *
  * Uses only the public package entry points, exactly like a consumer app.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -53,6 +53,7 @@ import {
   useNexconnClient,
   useNexconnEvent,
   useOnlineStatus,
+  useNotificationOpened,
   useTotalUnreadCount,
   useTypingUsers,
   useUnreadMentions,
@@ -983,20 +984,48 @@ const LOGGED_EVENTS = [
   'typingStatusChanged',
   'channelPinnedSync',
   'groupOperation',
+  'notificationOpened',
+  'notificationReceived',
+  'pushTokenReceived',
+  'pushTokenError',
+  'pushTokenReportResult',
   'unknownNativeEvent',
 ] as const;
+
+/**
+ * Redacted event log kept outside the Playground screen, so lines written
+ * while another screen is open (e.g. a notification tap that opens a chat)
+ * are still there when the Playground is opened again.
+ */
+const demoLog = {
+  lines: [] as readonly string[],
+  listeners: new Set<() => void>(),
+};
+
+function appendLog(line: string): void {
+  demoLog.lines = [
+    `${new Date().toLocaleTimeString()} ${line}`,
+    ...demoLog.lines,
+  ].slice(0, 50);
+  demoLog.listeners.forEach((listener) => listener());
+}
+
+function subscribeLog(listener: () => void): () => void {
+  demoLog.listeners.add(listener);
+  return () => {
+    demoLog.listeners.delete(listener);
+  };
+}
+
+const getLog = () => demoLog.lines;
 
 function Playground() {
   const client = useNexconnClient();
   const snapshot = useConnection();
   const unread = useTotalUnreadCount();
-  const [log, setLog] = useState<string[]>([]);
+  const log = useSyncExternalStore(subscribeLog, getLog, getLog);
   const [output, setOutput] = useState('');
-
-  const push = useCallback(
-    (line: string) => setLog((prev) => [line, ...prev].slice(0, 50)),
-    []
-  );
+  const push = appendLog;
 
   useEffect(() => {
     // Redacted log: event names and ids only, never message bodies or tokens.
@@ -1009,7 +1038,7 @@ function Playground() {
             : p.message
               ? `client=${p.message.clientId}`
               : '';
-        push(`${new Date().toLocaleTimeString()} ${name} ${detail}`);
+        push(`${name} ${detail}`);
       })
     );
     return () => subs.forEach((off) => off());
@@ -1066,6 +1095,24 @@ function Playground() {
           }
         />
         <Button
+          title="Push permission"
+          onPress={() =>
+            run('push.requestPermission', () => client.push.requestPermission())
+          }
+        />
+        <Button
+          title="Push token?"
+          onPress={() =>
+            // Reports whether a token exists, never the token itself.
+            run('push.getToken', async () => {
+              const token = await client.push.getToken();
+              return token
+                ? { pushType: token.pushType, length: token.token.length }
+                : null;
+            })
+          }
+        />
+        <Button
           title="Disconnect"
           onPress={() => run('disconnect', () => client.disconnect())}
         />
@@ -1092,6 +1139,20 @@ function Signed() {
   const [open, setOpen] = useState<ChannelIdentifier | undefined>();
   const unread = useTotalUnreadCount();
   useNexconnEvent('messageReceived', () => undefined);
+  // Tapping a Nexconn notification opens that chat (cold start included).
+  useNotificationOpened((notification) => {
+    // Logged here so warm taps and cold-start taps (delivered through
+    // getInitialNotification, not as an event) both leave a line.
+    appendLog(
+      `notificationOpened (routed) id=${notification.id} channel=${notification.channelType ?? '?'}:${notification.channelId ?? '?'}`
+    );
+    if (notification.channelType !== undefined && notification.channelId) {
+      setOpen({
+        channelType: notification.channelType,
+        channelId: notification.channelId,
+      });
+    }
+  });
   if (open) return <Chat channel={open} onBack={() => setOpen(undefined)} />;
   return (
     <View style={styles.flex}>

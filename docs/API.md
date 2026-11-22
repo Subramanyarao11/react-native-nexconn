@@ -123,7 +123,11 @@ await client.messages.sendMedia(channel, { type: 'image', localPath }, {
   `getMediaDownloadInfo`, `downloadMediaUrl`, `cancelDownloadMediaUrl`; on
   Android the URL download is implemented by the bridge, and `downloadMedia`
   of an image falls back to it when the SDK reports nothing for 20 s),
-  `refreshReferenceMessages`.
+  `refreshReferenceMessages` (resolves after `timeoutMs`, default 15 s, with
+  local results and `timedOut: true` if the SDK never returns the remote
+  result).
+- `localPath` accepts an absolute path or a `file://` URI on both platforms;
+  Android also accepts `content://` URIs (copied into the app cache first).
 
 ### Custom messages
 
@@ -144,10 +148,12 @@ to a slot; fields travel as JSON. Keep field names consistent across platforms.
   `updateInfo`, `join`, `leave`, `dismiss`, `transferOwner`, `inviteUsers`,
   `kickMembers`, `addAdmins`, `removeAdmins`, `addManagers`/`removeManagers`
   (Android only), `acceptInvite`, `refuseInvite`, `acceptApplication`,
-  `refuseApplication`, `getMembers`, `setMemberInfo`, favorites, and queries
+  `refuseApplication`, `getMembers`, `setMemberInfo` (an omitted `nickname`
+  keeps the current one on both platforms), favorites, and queries
   for applications, joined groups by role, search, members by role.
-- `client.openChannels`: `enter` (iOS resolves with the enter response; Android
-  delivers it via `openChannelEntered`), `exit`, metadata get/set/delete,
+- `client.openChannels`: `enter` (resolves with the enter response on both
+  platforms; on Android the bridge waits for the SDK's `onEntered` callback,
+  up to `responseTimeoutMs`), `exit`, metadata get/set/delete,
   `createMessagesQuery`.
 - `client.community`: `getSubChannels`, `getUnreadCount`,
   `getChannelsUnreadInfo`, totals, `checkRemoteMessages`.
@@ -205,6 +211,7 @@ model arrive as `unknownNativeEvent` rather than being dropped.
 - Users: `useUsers`/`useUser`, `useOnlineStatus`, `useFriends`,
   `useFriendApplications` and `useBlockedUsers`.
 - `useOpenChannel` and `useCommunitySubChannels`.
+- Push: `useNotificationOpened`.
 
 Hooks reset when the user or session generation changes. They keep their
 data through network drops and revalidate after reconnecting. See
@@ -236,15 +243,20 @@ transport.emit('MessageHandler.onMessageReceived', { message: fixtures.textMessa
 
 ## Push notifications
 
-- Android (FCM): enable `android.fcm` in the Expo plugin, or for CLI apps add
-  `implementation "ai.nexconn.chat:push-fcm:26.4.2"`, the
-  `com.google.gms.google-services` plugin, `google-services.json` and
-  `manifestPlaceholders = [FCM_PUSH_ENABLE: "true"]`. Upload FCM credentials in
-  the Nexconn console. Notification taps fire `rong://<applicationId>/conversation`
-  or `/conversationlist` intents; the Expo plugin adds matching intent filters
-  so the app opens and can route with `Linking`.
-- iOS (APNs): enable the Push Notifications capability (`ios.pushNotifications`
-  in the Expo plugin adds the entitlement and background mode), upload a P12/P8
-  to the console, and forward the device token as above.
-- Physical-device verification is required; simulators/emulators are not
-  sufficient evidence.
+```ts
+await client.push.requestPermission();            // iOS: also registers for APNs
+const off = client.push.onNotificationOpened((n) => {
+  if (n.channelType !== undefined && n.channelId) openChat(n);  // cold start included
+});
+client.on('pushTokenReceived', ({ pushType }) => log(pushType));
+```
+
+`client.push`: `getPermissionStatus`, `requestPermission`, `getToken`,
+`getInitialNotification`, `onNotificationOpened`, `parseNotification` (for
+payloads from `expo-notifications` and similar), `clearNotifications`,
+`clearNotification`, `getPushType` (Android). Events: `notificationOpened`,
+`notificationReceived`, `pushTokenReceived`, `pushTokenError`,
+`pushTokenReportResult` (Android). React: `useNotificationOpened`.
+
+Native setup (FCM, APNs, AppDelegate) is in [PUSH.md](PUSH.md). None of the
+push path has been verified on a physical device yet.

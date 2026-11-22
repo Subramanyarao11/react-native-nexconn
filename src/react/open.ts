@@ -45,6 +45,8 @@ export function useOpenChannel(
   const [info, setInfo] = useState<OpenChannelEnterResponse | undefined>();
   const [participantCount, setParticipantCount] = useState<number>();
   const [error, setError] = useState<unknown>(undefined);
+  // True from the moment an enter is requested until exit, failure or
+  // destroy, so an unmount during a slow enter still exits the room.
   const enteredRef = useRef(false);
   const tokenRef = useRef(0);
   const optionsRef = useRef({ messageCount, extra });
@@ -61,6 +63,7 @@ export function useOpenChannel(
     const token = ++tokenRef.current;
     setStatus('entering');
     setError(undefined);
+    enteredRef.current = true;
     try {
       const { messageCount: count, extra: ext } = optionsRef.current;
       const response = await client.openChannels.enter(channelId, {
@@ -68,12 +71,12 @@ export function useOpenChannel(
         ...(ext !== undefined ? { extra: ext } : {}),
       });
       if (tokenRef.current !== token) return;
-      enteredRef.current = true;
-      // Android delivers the response through `openChannelEntered` only.
+      // On Android the response may arrive only through `openChannelEntered`.
       applyResponse(response);
       setStatus('entered');
     } catch (cause) {
       if (tokenRef.current !== token) return;
+      enteredRef.current = false;
       setError(cause);
       setStatus('failed');
     }
@@ -110,6 +113,7 @@ export function useOpenChannel(
       }),
       client.on('openChannelEnterFailed', (event) => {
         if (event.channelId !== channelId) return;
+        enteredRef.current = false;
         setError(
           new NexconnError({
             category: 'native',

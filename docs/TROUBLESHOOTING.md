@@ -40,21 +40,22 @@ try { /* ... */ } catch (e) {
 | The sender's bubble stays on Sent after the peer read it (Android) | The Android SDK reports the receipt but keeps the stored message's `sentStatus` at Sent. Render `useMessages().readState(message)`, which uses the receipt counts |
 | A send failed and there's no retry | `sendState(m).canRetry` is true only once the SDK's stored copy says failed or canceled. Until then the outcome is uncertain, and resending could duplicate the message. `refresh()` re-reads the SDK copy |
 | Location messages fail with `nativeCode` 31610 (`JsonParserFailed`) | A known defect in the vendor SDK on both platforms (its encoder writes an invalid location type). There's no workaround through the public API; it needs a Nexconn fix |
-| Media send: "file not found" or nothing uploads | Pass an absolute file path as `localPath`. On Android, copy a `content://` document-picker URI into the app's cache first, because the SDK reads files by path. iOS video and location messages also need `thumbnailPath` |
+| Media send: "file not found" or nothing uploads | Pass an absolute path or a `file://` URI as `localPath`. On Android, `content://` URIs (document picker) are copied into the app cache before upload. iOS video and location messages also need `thumbnailPath` |
 | Duplicate messages after reconnecting | Shouldn't happen with the hooks, which de-duplicate by `clientId` and `messageId`. If you keep your own list, merge on both ids |
-| `refreshReferenceMessages` never resolves | The SDK sometimes doesn't call back for remote references. Don't block the UI on it: race it against your own timeout and show the quoted message as unknown |
+| `refreshReferenceMessages` returns `timedOut: true` | The SDK sometimes doesn't call back for remote references. The bridge resolves with the local results after `timeoutMs` (default 15 s); show the quoted message as unknown |
 
 ## Open channels
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `openChannels.enter()` resolves `undefined` on Android | The Android SDK delivers the enter response only through the `openChannelEntered` event. `useOpenChannel` handles both platforms |
+| `openChannels.enter()` rejects with `nativeCode` 23410 (`ChatroomNotExist`) | The room doesn't exist. Open-channel rooms are created in the Nexconn console or through the server API; the client SDK can't create them |
+| `openChannels.enter()` resolves `undefined` on Android | The enter response didn't arrive within `responseTimeoutMs` (default 10 s). The Android SDK delivers it through `openChannelEntered`; `useOpenChannel` handles both platforms |
 
 ## Push
 
 Push needs real credentials (FCM `google-services.json` and APNs keys
 uploaded to the Nexconn console) and physical devices. Emulator results don't
-count as delivery evidence. See [API.md](API.md#push-notifications).
+count as delivery evidence. See [PUSH.md](PUSH.md).
 
 ## Getting more detail
 

@@ -973,6 +973,62 @@ export interface UntaggedChannelsQueryParams {
 // Events
 // ---------------------------------------------------------------------------
 
+/** A Nexconn push notification, as reported by the native push plumbing. */
+export interface PushNotification {
+  /** Bridge-assigned id, unique per process; used to de-duplicate taps. */
+  readonly id: string;
+  readonly platform: 'android' | 'ios';
+  /** Push provider: `apns` on iOS; RongPush type name on Android (e.g. `FCM`). */
+  readonly pushType?: string;
+  readonly channelType?: ChannelType;
+  /** Target id of the channel (user id for direct, group id for group). */
+  readonly channelId?: string;
+  readonly senderId?: string;
+  /** Android only. */
+  readonly senderName?: string;
+  /** Server push id; on most pushes the message UID. */
+  readonly pushId?: string;
+  /** Message object name, e.g. `RC:TxtMsg`. */
+  readonly objectName?: string;
+  readonly title?: string;
+  readonly body?: string;
+  /** `pushData` set by the sender (`PushConfig.pushData`). */
+  readonly pushData?: string;
+  /** Android only. */
+  readonly extra?: string;
+  /** Android only (milliseconds). */
+  readonly receivedTime?: number;
+  /** iOS: notification request identifier; Android: SDK notification id. */
+  readonly notificationId?: string;
+  /** iOS: non-default action identifier the user chose. */
+  readonly actionIdentifier?: string;
+  /** Provider-specific fields (iOS: the full `userInfo`). */
+  readonly raw: Readonly<Record<string, unknown>>;
+}
+
+export interface PushToken {
+  readonly token: string;
+  readonly pushType?: string;
+  readonly platform: 'android' | 'ios';
+}
+
+/**
+ * Notification permission. Android reports only `granted`/`denied` from the
+ * system setting; iOS also `undetermined`, `provisional` and `ephemeral`.
+ */
+export type PushPermissionStatus =
+  'granted' | 'denied' | 'undetermined' | 'provisional' | 'ephemeral';
+
+export interface PushPermissionRequest {
+  /** iOS: authorization options (default alert, badge and sound). */
+  readonly alert?: boolean;
+  readonly badge?: boolean;
+  readonly sound?: boolean;
+  readonly provisional?: boolean;
+  /** iOS: call `registerForRemoteNotifications` when granted (default true). */
+  readonly registerForRemoteNotifications?: boolean;
+}
+
 export interface NexconnEventMap {
   connectionStatusChanged: { readonly status: ConnectionStatus };
   databaseOpened: DatabaseOpenedEvent;
@@ -1154,6 +1210,27 @@ export interface NexconnEventMap {
   };
 
   userSettingsSyncCompleted: { readonly error?: NativeErrorInfo };
+
+  /** A Nexconn notification was tapped (see `client.push.onNotificationOpened`). */
+  notificationOpened: PushNotification;
+  /**
+   * A Nexconn notification arrived. Android: after the SDK posts it. iOS:
+   * while in the foreground, through the bridge's notification handler.
+   */
+  notificationReceived: PushNotification;
+  pushTokenReceived: PushToken;
+  pushTokenError: {
+    readonly pushType?: string;
+    readonly code: number;
+    readonly message?: string;
+    readonly platform: 'android' | 'ios';
+  };
+  /** Android only: result of reporting the push token to Nexconn. */
+  pushTokenReportResult: {
+    readonly pushType?: string;
+    readonly code: number;
+    readonly finalPushType?: string;
+  };
 
   /** A native event the bridge forwarded but this JS version does not model. */
   unknownNativeEvent: { readonly type: string; readonly payload: unknown };

@@ -24,7 +24,7 @@ const sw = read(walk(join(root, 'ios'), '.swift'));
 
 const methods = [
   ...new Set(
-    [...js.matchAll(/'((?:engine|channel|message|group|open|community|user|translate|tag|query)\.[A-Za-z]+)'/g)].map(
+    [...js.matchAll(/'((?:engine|channel|message|group|open|community|user|translate|tag|query|push)\.[A-Za-z]+)'/g)].map(
       (m) => m[1]
     )
   ),
@@ -42,10 +42,11 @@ const AREAS = {
   translate: 'Translation',
   tag: 'Channel tags',
   query: 'Paged queries',
+  push: 'Push notifications (permission, token, taps)',
 };
 
 const kinds = [...js.matchAll(/new PagedQuery\(\s*this\.bridge,\s*'([A-Za-z]+)'/g)].map((m) => m[1]);
-const events = [...js.matchAll(/'([A-Za-z]+Handler\.on[A-Za-z]+|Engine\.on[A-Za-z]+)': \[\s*'([A-Za-z]+)'/g)].map((m) => [
+const events = [...js.matchAll(/'([A-Za-z]+Handler\.on[A-Za-z]+|Engine\.on[A-Za-z]+|Push\.on[A-Za-z]+)': \[\s*'([A-Za-z]+)'/g)].map((m) => [
   m[1],
   m[2],
 ]);
@@ -76,6 +77,7 @@ out += `- Chat UI kit — this package is headless; React hooks are provided ins
 out += `- Android \`UserModule.deleteFriends\` — duplicate of \`removeFriends\` in the Android SDK; iOS has only \`removeFriends\`.\n`;
 out += `- iOS \`CommunitySearchMessagesByKeywordQuery\` / \`CommunitySearchMessagesByUserQuery\` — no public factory found in the 26.4.2 interface; use \`searchMessagesByUser\` with \`subChannelIds\`.\n`;
 out += `- Android \`Message.restorePreviewDownloadedLocalPath\`, \`Message.createForPreview\`, \`BaseChannel.setEditedMessageDraft\` (local property setter) — UI-preview helpers not needed through the bridge.\n`;
+out += `- \`push.requestPermission\` on Android is implemented in JS (\`PermissionsAndroid\`, Android 13+), not natively.\n`;
 out += `- Custom message types — supported through 16 plain + 16 media generic slots per platform (see docs/API.md).\n`;
 writeFileSync(join(root, 'docs/PARITY.md'), out);
 console.log(`docs/PARITY.md: ${methods.length} methods, ${kinds.length} queries, ${events.length} events`);

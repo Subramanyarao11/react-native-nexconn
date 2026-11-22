@@ -182,6 +182,6 @@ apps use.
 
 - [REACT.md](REACT.md): every hook and how it stays current.
 - [API.md](API.md): the headless client, modules, events and errors.
-- [Push notifications](API.md#push-notifications): FCM and APNs setup. Push
-  needs physical devices to verify.
+- [PUSH.md](PUSH.md): push notifications (FCM and APNs), permission and
+  tap routing. Push needs physical devices to verify.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): common build and runtime errors.
