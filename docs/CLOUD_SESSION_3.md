@@ -91,3 +91,32 @@ iOS from the Mac):
 Physical-device push P1–P7 (Android): not run. No FCM project,
 `google-services.json` or signed physical-device build was available;
 emulator results are not evidence of push delivery.
+
+### iOS (Mac)
+
+macOS 26.6.2 (arm64), Xcode 26.6, iOS 26.5 simulator SDK, Node 24.21.0, Yarn
+4.18.1. B1 ran at `b025132`; B3, B4 and C1–C5 ran at `3fe30a3` on two
+simulators (iPhone 17 Pro Max and iPhone 17) with Metro serving this branch,
+and two real Nexconn users. No source was changed on the Mac.
+
+| Row | Result | Evidence |
+| --- | --- | --- |
+| B1 | Pass | At `b025132`: 71/71 tests, typecheck, lint 0 errors (6 warnings), package build |
+| B3 CLI at `b025132` | **Fail** | Exit 65 compiling `ios/Nexconn.mm`: `Nexconn-Swift.h` uses `UNUserNotificationCenterDelegate` and `UNNotificationPresentationOptions` without UserNotifications imported. Fixed in `3fe30a3` |
+| B3 CLI | Pass | `verify-ios.sh cli` builds with `NexconnPush.swift`. The AppDelegate's `#if canImport(Nexconn)` branch compiles: `AppDelegate.o` references `NexconnBridge.installNotificationHandler`, `registerDeviceToken` and `registerDeviceTokenFailed` |
+| B3 Expo release | Pass | `verify-ios.sh expo-release` builds |
+| B4 | Pass | Packed CLI and Expo consumers build. The first run failed with a code-signing internal error when the disk was full; it passed after freeing space |
+| C1 | Pass | Alice allowed → `granted`; Bob denied → `denied`. Repeat requests return the stored state with no dialog |
+| C2 | Pass | `getToken()` returns `null` without a crash, and the event log shows `pushTokenError` (`pushType: apns`, native code 3000). No token value was recorded |
+| C3 | **Pass (routing); log criterion not met** | Warm tap: one native open callback, one JS `notificationOpened` event, and Bob's chat opened once. Cold tap (app killed): the app launched to Sign in; after sign-in the initial notification opened Bob's chat once. No double open in either case. But the Playground event log keeps no `notificationOpened` line, and the cold path reaches only `useNotificationOpened` (initial notification), with no generic `notificationOpened` event |
+| C4 | **Fail** | Reproduced in two fresh groups. Both clients read Bob's nickname as `nick`; Alice's `setMemberInfo(groupId, {userId: bob, extra: 'x'})` resolves with no failed keys. Alice then reads `nick`/`x`, but Bob's own client reads an empty nickname with `x`, also 13 s later. The iOS bridge omits the nickname (`group.setMemberInfo` in `ios/NexconnBridge.swift`) and the iOS SDK clears it; Android resends the current nickname and passes |
+| C5 | **Blocked** | No room ID. `openChannels.enter` on an unknown room rejects with native 23410, as on Android. No room was created |
+
+Paired Android Alice / iOS Bob rows (X3 and one image each way): see the table
+in the Android subsection; all three pass. On iOS, the X3 message arrived once
+(native 09:28:00.441Z) while the chat was closed, and the read-receipt batch
+resolved at 09:28:58.238Z. iOS sent its image through the Send file UI.
+
+Physical-device push P1–P7 (iOS): not run. No APNs key uploaded to Nexconn or
+signed device build was available; simulator `.apns` taps are not evidence of
+push delivery.

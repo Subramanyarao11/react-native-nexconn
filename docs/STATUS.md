@@ -202,8 +202,7 @@ because `ios/Nexconn.mm` imported `Nexconn-Swift.h` without UserNotifications,
 and that header uses `UNUserNotificationCenterDelegate` and
 `UNNotificationPresentationOptions`. On Ubuntu, B1 and B2 passed (CLI and Expo
 Release). The next commit imports UserNotifications in `Nexconn.mm` and adds
-`s.frameworks = "UserNotifications"` to the podspec. This fix is not compiled
-yet. The Mac still needs to rerun B3 (CLI and Expo Release), B4 and C1–C5.
+`s.frameworks = "UserNotifications"` to the podspec (`3fe30a3`).
 
 Android results (Ubuntu; builds and C rows at `b025132`, which has the same
 Android and JS code as `3fe30a3`):
@@ -220,6 +219,16 @@ image each way downloads (iOS → Android byte-identical PNG; Android → iOS
 JPEG because the demo doesn't request `original: true`). Physical push
 P1–P7 was not run (no FCM, APNs or signed device build). Details:
 [cloud session 3 results](CLOUD_SESSION_3.md#android-ubuntu).
+
+iOS results (Mac, `3fe30a3`, Xcode 26.6, iOS 26.5 simulators): B3 (CLI and
+Expo Release) and B4 pass; `NexconnPush.swift` and the CLI AppDelegate's
+`#if canImport(Nexconn)` path compile. C1 and C2 pass (simulator token request
+returns `null` plus `pushTokenError`). C3 routing passes warm and cold with no
+double open, but the Playground log keeps no `notificationOpened` line and the
+cold path emits no generic event. C4 fails on iOS: an extra-only
+`setMemberInfo` clears the member's nickname on the server, because the iOS
+bridge omits it. C5 is blocked (no room ID, 23410). Physical push P1–P7 was not
+run. Details: [cloud session 3 results](CLOUD_SESSION_3.md#ios-mac).
 
 The [session 2 results](STATUS_SESSION_2.md) distinguish what's verified
 in this run from previous revisions. They do not establish full
