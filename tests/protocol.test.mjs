@@ -36,7 +36,7 @@ const jsMethods = new Set(
 const androidMethods = new Set([...kotlin.matchAll(/\bon\("([a-z]+\.[A-Za-z]+)"\)/g)].map((m) => m[1]));
 const iosMethods = new Set([...swift.matchAll(/\bon\("([a-z]+\.[A-Za-z]+)"\)/g)].map((m) => m[1]));
 
-/** Capabilities that exist in only one vendor SDK (documented in docs/API.md). */
+/** Capabilities that exist in only one vendor SDK (documented in docs/guide/api.md). */
 const ANDROID_ONLY = new Set([
   'channel.syncReadStatus',
   'group.addManagers',

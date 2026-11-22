@@ -86,3 +86,5 @@ example/ios/
 example/android/
 **/Pods/
 **/vendor/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

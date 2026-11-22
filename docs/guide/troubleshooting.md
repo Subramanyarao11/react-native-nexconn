@@ -4,7 +4,7 @@ Errors are `NexconnError`s. Check `category` first, then `nativeCode` (the
 Nexconn SDK's status code) and `method` (the bridge call that failed).
 
 ```ts
-import { isNexconnError } from 'react-native-nexconn';
+import { isNexconnError } from '@subramanyarao11/react-native-nexconn';
 try { /* ... */ } catch (e) {
   if (isNexconnError(e)) console.warn(e.category, e.nativeCode, e.method);
 }
@@ -55,7 +55,7 @@ try { /* ... */ } catch (e) {
 
 Push needs real credentials (FCM `google-services.json` and APNs keys
 uploaded to the Nexconn console) and physical devices. Emulator results don't
-count as delivery evidence. See [PUSH.md](PUSH.md).
+count as delivery evidence. See [PUSH.md](push.md).
 
 ## Getting more detail
 

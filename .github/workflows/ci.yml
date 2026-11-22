@@ -1,7 +1,12 @@
 name: Package checks
-# Manual only for now: switch to pull_request once runner costs are agreed.
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -16,6 +21,7 @@ jobs:
       # Unit tests, rendered hook tests, typecheck, lint and build.
       - run: node .yarn/releases/yarn-4.18.1.cjs check
       - run: node .yarn/releases/yarn-4.18.1.cjs bench
+      - run: node .yarn/releases/yarn-4.18.1.cjs docs:build
 
   packed-consumers:
     # Installs the packed tarball into fresh Community CLI and Expo apps

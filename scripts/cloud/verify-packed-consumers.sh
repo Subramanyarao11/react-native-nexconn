@@ -19,14 +19,14 @@ cat > "$WORK/consumer-check.tsx" <<'EOF'
 import {
   getNexconnClient, ChannelType, NexconnError, replyTo, withMentions, mentionsUser,
   type Message,
-} from 'react-native-nexconn';
+} from '@subramanyarao11/react-native-nexconn';
 import {
   NexconnProvider, useMessages, useChannelList, useSession, useDraft, useUnreadMentions,
   useMessageSearch, useGroup, useGroupMembers, useJoinedGroups, useUsers, useUser,
   useOnlineStatus, useFriends, useFriendApplications, useBlockedUsers, useOpenChannel,
   useCommunitySubChannels, sendStateOf, type MessageSendState, type UsePagedListResult,
-} from 'react-native-nexconn/react';
-import { createMockClient } from 'react-native-nexconn/testing';
+} from '@subramanyarao11/react-native-nexconn/react';
+import { createMockClient } from '@subramanyarao11/react-native-nexconn/testing';
 const client = getNexconnClient();
 const channel = { channelType: ChannelType.direct, channelId: 'bob' };
 export async function demo(): Promise<Message> {
@@ -76,7 +76,7 @@ cd CliConsumer
 npm install
 npm install "$WORK/react-native-nexconn.tgz"
 check_types
-node -e "require.resolve('react-native-nexconn/package.json'); console.log('resolved', require('react-native-nexconn/package.json').version)"
+node -e "require.resolve('@subramanyarao11/react-native-nexconn/package.json'); console.log('resolved', require('@subramanyarao11/react-native-nexconn/package.json').version)"
 if [[ "${BUILD_NATIVE:-}" == "android" ]]; then
   (cd android && ./gradlew --no-daemon assembleDebug)
 elif [[ "${BUILD_NATIVE:-}" == "ios" ]]; then
@@ -92,7 +92,7 @@ npm install
 npm install "$WORK/react-native-nexconn.tgz"
 node -e "
 const fs=require('fs');const p='app.json';const j=JSON.parse(fs.readFileSync(p));
-j.expo.plugins=[...(j.expo.plugins||[]),['react-native-nexconn',{}]];
+j.expo.plugins=[...(j.expo.plugins||[]),['@subramanyarao11/react-native-nexconn',{}]];
 j.expo.android={...(j.expo.android||{}),package:'com.example.nexconnconsumer'};
 j.expo.ios={...(j.expo.ios||{}),bundleIdentifier:'com.example.nexconnconsumer'};
 fs.writeFileSync(p,JSON.stringify(j,null,2));"

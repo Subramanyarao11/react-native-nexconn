@@ -1,7 +1,7 @@
 # Cloud test runbook
 
 Run these checks on cloud VMs (Ubuntu for JS and Android, macOS for iOS).
-See [implementation status](STATUS.md) for verified results. A green build
+See [implementation status](../reference/status.md) for verified results. A green build
 is not evidence that messaging works; the live checklist at the end is.
 
 ## 0. Prerequisites
@@ -165,7 +165,7 @@ as user A on one device/simulator and user B on another.
 | # | Scenario | Expected | Platform(s) |
 | --- | --- | --- | --- |
 | L1 | Initialize + connect A | Playground shows `connected`, user A, generation ≥ 1 | Android, iOS |
-| L2 | `getCapabilities` | Lists methods; platform-only rows match docs/PARITY.md | both |
+| L2 | `getCapabilities` | Lists methods; platform-only rows match docs/reference/parity.md | both |
 | L3 | A → B text in direct channel | B receives `messageReceived`; both lists update without duplicates | both, and cross-platform |
 | L4 | Read receipt | B opens chat → A gets `readReceiptResponse` | both |
 | L5 | Typing | B types → A sees "typing…" | both |

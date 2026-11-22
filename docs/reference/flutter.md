@@ -63,4 +63,4 @@ bridge):
 Flutter 26.2.11 already has stream messages, speech to text, message
 metadata and read receipts by users; this package has them too.
 
-See [PARITY.md](PARITY.md) for the full native method matrix.
+See [PARITY.md](parity.md) for the full native method matrix.

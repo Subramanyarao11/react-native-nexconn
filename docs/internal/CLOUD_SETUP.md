@@ -5,7 +5,7 @@ Keep environment access private to the owner. Do not add production credentials.
 
 ## Verified setup status, 2 November 2026
 
-The private environment is named `react-native-nexconn`. Cloud onboarding
+The private environment is named `@subramanyarao11/react-native-nexconn`. Cloud onboarding
 installed dependencies using Yarn 4.18.1, then passed the two diagnostic tests,
 TypeScript, ESLint and the Bob package build. It left tracked files unchanged
 and generated an untracked `yarn.lock`; review and commit that lockfile during

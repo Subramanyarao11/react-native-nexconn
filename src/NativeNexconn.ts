@@ -9,7 +9,7 @@ import {
  *
  * The SDK surface (~150 operations) is exposed through one JSON dispatcher so
  * that both native layers share a single, versioned wire protocol (see
- * docs/BRIDGE_PROTOCOL.md). The typed API lives in JavaScript.
+ * docs/reference/bridge-protocol.md). The typed API lives in JavaScript.
  */
 export interface Spec extends TurboModule {
   /** JSON IntegrationStatus describing link/SDK state. */

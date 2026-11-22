@@ -12,10 +12,10 @@
     "build:web": "vite build"
   },
   "dependencies": {
+    "@subramanyarao11/react-native-nexconn": "workspace:*",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
-    "react-native-nexconn": "workspace:*",
     "react-native-web": "~0.21.4"
   },
   "devDependencies": {

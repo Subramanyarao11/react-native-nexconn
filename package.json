@@ -1,7 +1,7 @@
 {
-  "name": "react-native-nexconn",
-  "version": "0.0.0-development",
-  "description": "Community React Native Chat SDK for Nexconn, supporting Community CLI and Expo development builds.",
+  "name": "@subramanyarao11/react-native-nexconn",
+  "version": "0.1.0-beta.0",
+  "description": "Community React Native SDK for Nexconn Chat: typed client, React hooks, Expo config plugin and test doubles for Community CLI and Expo development builds. Not affiliated with Nexconn.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
@@ -31,6 +31,7 @@
     "cpp",
     "android/consumer-rules.pro",
     "THIRD_PARTY_NOTICES.md",
+    "CHANGELOG.md",
     "plugin",
     "app.plugin.js",
     "*.podspec",
@@ -59,7 +60,10 @@
     "build": "bob build",
     "check": "yarn test && yarn test:react && yarn typecheck && yarn lint && yarn build",
     "test:react": "jest",
-    "bench": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning scripts/bench-events.mjs"
+    "bench": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning scripts/bench-events.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "keywords": [
     "react-native",
@@ -69,20 +73,25 @@
     "chat",
     "messaging",
     "expo",
-    "turbo-module"
+    "turbo-module",
+    "react-hooks",
+    "chat-sdk",
+    "push-notifications",
+    "new-architecture"
   ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Subramanyarao11/react-native-nexconn.git"
   },
   "author": "Subramanya <90202645+Subramanyarao11@users.noreply.github.com> (https://github.com/Subramanyarao11)",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/Subramanyarao11/react-native-nexconn/issues"
   },
-  "homepage": "https://github.com/Subramanyarao11/react-native-nexconn#readme",
+  "homepage": "https://subramanyarao11.github.io/react-native-nexconn/",
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "devDependencies": {
     "@eslint/compat": "^2.1.1",
@@ -105,7 +114,8 @@
     "react-native-builder-bob": "^0.44.1",
     "test-renderer": "1.3.1",
     "turbo": "^2.11.10",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitepress": "1.6.4"
   },
   "peerDependencies": {
     "expo": ">=58.0.0",
@@ -158,7 +168,6 @@
     ],
     "version": "0.64.0"
   },
-  "private": true,
   "peerDependenciesMeta": {
     "expo": {
       "optional": true

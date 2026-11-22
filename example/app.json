@@ -24,7 +24,7 @@
     },
     "plugins": [
       [
-        "react-native-nexconn",
+        "@subramanyarao11/react-native-nexconn",
         {
           "android": {
             "fcm": false,
