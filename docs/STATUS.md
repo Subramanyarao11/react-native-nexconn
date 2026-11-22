@@ -33,9 +33,10 @@ JSON protocol was chosen (docs/BRIDGE_PROTOCOL.md).
   community channels, users/friends/presence/block list, translation, tags,
   do-not-disturb/push settings, capabilities, custom messages, typed events,
   paged queries, structured errors.
-- React entry point: provider and hooks (`useConnection`, `useNexconnEvent`,
-  `useChannelList`, `useMessages`, `useTotalUnreadCount`, `useTypingUsers`),
-  with per-session reset and local-echo de-duplication.
+- React entry point: provider and hooks for connection, channel list,
+  messages (with send state and retry), drafts, mentions, search, groups,
+  users and friends, and open and community channels, with per-session reset
+  and local-echo de-duplication (docs/REACT.md).
 - Testing entry point: `MockTransport`, `createMockClient`, fixtures.
 - Android Kotlin bridge (`android/src/main/java/com/nexconn/bridge`):
   dispatcher, reflection serializer, event forwarder for all handler
@@ -189,6 +190,36 @@ Branch `fix/session-restore-recall-release`; test plan in
   during upload without Refresh. See the
   [iOS follow-up](STATUS_SESSION_2.md#ios-follow-up-at-d2d667f-november-2122-utc).
 
+## React hooks branch (`feat/react-hooks`, JavaScript only)
+
+Verified on the dev Mac on 22 November 2026 (Node 24.22.2, macOS arm64). Not
+run on devices yet; device rows H1–H11 are in
+[cloud session 4](CLOUD_SESSION_4.md).
+
+| Check | Result |
+| --- | --- |
+| `yarn test` | 81/81 pass (after merging PR #5) |
+| `yarn test:react`: rendered hook tests with React Native Testing Library 14.1.0, Jest 29.7.0 and `@react-native/jest-preset` 0.88.1 | 20/20 pass |
+| `yarn typecheck`, including `tests/types/public-api.tsx` (every public hook and helper) | pass |
+| `yarn lint` | 0 errors, 0 warnings |
+| `yarn build` | pass |
+| Packed-tarball consumer install with the new hooks | not run here; B2 in cloud session 4, and in the `packed-consumers` CI job |
+
+`yarn bench` (mock transport, no native code), before and after indexing
+`MessageListStore`:
+
+| Case | Before | After |
+| --- | --- | --- |
+| Live append into a 2000-message list | 379 µs/msg | 4.5 µs/msg |
+| Local echo and ack (1000-message list) | 753 µs | 5.6 µs |
+| History page of 30 messages | 9.3 ms | 0.5 ms |
+| `messageReceived` dispatch | 8.3 µs | 4.9 µs |
+
+These are Node timings on an M-series Mac. Hermes on a phone will be slower,
+so treat them as relative, not as device numbers. The bench also checks that
+the list stays bounded, has no duplicates, and that subscribe/unsubscribe
+churn leaves `client.listenerCount()` at its baseline.
+
 ## Pending verification (cloud VMs / devices)
 
 Branch `feat/push-and-sdk-fixes` (PR #5, based on `main`) changes native code that
@@ -278,10 +309,14 @@ push; FCM and physical push were out of scope.
 - Media `localPath`: both platforms accept absolute paths and `file://` URIs;
   Android copies `content://` URIs into the app cache first (same branch).
   The forms each SDK accepts still need confirming on devices.
-- Push: no row has been built or verified on a device. Flutter-only APIs with
+- Push: builds pass on both platforms and simulator/emulator rows C1–C3
+  ran; delivery on physical devices (P1–P7) has not been tested. Flutter-only APIs with
   no native 26.4.2 equivalent (`destroy`, runtime `setLogLevel`, group
   `setRemark`) are not available ([FLUTTER_PARITY.md](FLUTTER_PARITY.md)).
-- Hooks are covered through their pure stores; React Native Testing Library
-  is not installed, so rendered hook tests are not included.
+- Rendered hook tests run against the mock transport (`tests/react`). They
+  don't replace device runs of the same flows.
+- `useMessages().retry` is offered only after the SDK's stored copy reports
+  `failed` or `canceled`. How quickly each platform's SDK reports a failure
+  for an offline send hasn't been measured (row H2).
 - Licensing, SDK redistribution terms and publication remain unresolved; the
   package stays private.

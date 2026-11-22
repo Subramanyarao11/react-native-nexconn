@@ -16,16 +16,37 @@ grep -qxF "package/lib/module/index.js" <<<"$TAR_LIST" \
   || { echo "Tarball is missing lib/module/index.js"; exit 1; }
 
 cat > "$WORK/consumer-check.tsx" <<'EOF'
-import { getNexconnClient, ChannelType, NexconnError, type Message } from 'react-native-nexconn';
-import { NexconnProvider, useMessages, useChannelList } from 'react-native-nexconn/react';
+import {
+  getNexconnClient, ChannelType, NexconnError, replyTo, withMentions, mentionsUser,
+  type Message,
+} from 'react-native-nexconn';
+import {
+  NexconnProvider, useMessages, useChannelList, useSession, useDraft, useUnreadMentions,
+  useMessageSearch, useGroup, useGroupMembers, useJoinedGroups, useUsers, useUser,
+  useOnlineStatus, useFriends, useFriendApplications, useBlockedUsers, useOpenChannel,
+  useCommunitySubChannels, sendStateOf, type MessageSendState, type UsePagedListResult,
+} from 'react-native-nexconn/react';
 import { createMockClient } from 'react-native-nexconn/testing';
 const client = getNexconnClient();
 const channel = { channelType: ChannelType.direct, channelId: 'bob' };
 export async function demo(): Promise<Message> {
   await client.initialize({ appKey: 'k' });
-  return client.messages.send(channel, { type: 'text', text: 'hi' });
+  return client.messages.send(channel, withMentions({ type: 'text', text: 'hi' }, ['bob']));
 }
-export const refs = [NexconnProvider, useMessages, useChannelList, createMockClient, NexconnError];
+export function useChat(): {
+  state: (m: Message) => MessageSendState;
+  members: UsePagedListResult<unknown>;
+} {
+  const { sendState } = useMessages(channel);
+  const members = useGroupMembers('g1');
+  return { state: sendState, members };
+}
+export const refs = [
+  NexconnProvider, useMessages, useChannelList, useSession, useDraft, useUnreadMentions,
+  useMessageSearch, useGroup, useJoinedGroups, useUsers, useUser, useOnlineStatus, useFriends,
+  useFriendApplications, useBlockedUsers, useOpenChannel, useCommunitySubChannels, sendStateOf,
+  replyTo, mentionsUser, createMockClient, NexconnError,
+];
 EOF
 
 cat > "$WORK/tsconfig.nexconn.json" <<'EOF'

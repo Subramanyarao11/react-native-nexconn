@@ -1,4 +1,5 @@
 name: Package checks
+# Manual only for now: switch to pull_request once runner costs are agreed.
 on:
   workflow_dispatch:
 permissions:
@@ -11,5 +12,22 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version-file: .nvmrc
-      - run: node .yarn/releases/yarn-4.18.1.cjs install
+      - run: node .yarn/releases/yarn-4.18.1.cjs install --immutable
+      # Unit tests, rendered hook tests, typecheck, lint and build.
       - run: node .yarn/releases/yarn-4.18.1.cjs check
+      - run: node .yarn/releases/yarn-4.18.1.cjs bench
+
+  packed-consumers:
+    # Installs the packed tarball into fresh Community CLI and Expo apps
+    # (outside the workspace) and type-checks the public entry points.
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .nvmrc
+      - run: bash scripts/cloud/verify-packed-consumers.sh
+        env:
+          WORK: ${{ runner.temp }}/consumers

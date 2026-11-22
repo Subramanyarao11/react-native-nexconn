@@ -201,10 +201,24 @@ model arrive as `unknownNativeEvent` rather than being dropped.
 </NexconnProvider>
 ```
 
-`useConnection`, `useNexconnEvent`, `useChannelList`, `useMessages`
-(history + live updates + `send`/`edit`/`recall`/`refresh`),
-`useTotalUnreadCount`, `useTypingUsers`, `useNotificationOpened`.
-Hooks reset their state when the user or session generation changes.
+- Connection and events: `useConnection`, `useSession`, `useNexconnEvent`,
+  `useTotalUnreadCount` and `useTypingUsers`.
+- `useChannelList`.
+- `useMessages`: history, live updates, `send`, `reply`, `edit`, `recall`,
+  `retry`, `cancel`, `discard`, `sendState` and `readState`.
+- `useDraft`, `useUnreadMentions` and `useMessageSearch`.
+- Groups: `useGroup`, `useGroupMembers` and `useJoinedGroups`.
+- Users: `useUsers`/`useUser`, `useOnlineStatus`, `useFriends`,
+  `useFriendApplications` and `useBlockedUsers`.
+- `useOpenChannel` and `useCommunitySubChannels`.
+- Push: `useNotificationOpened`.
+
+Hooks reset when the user or session generation changes. They keep their
+data through network drops and revalidate after reconnecting. See
+[REACT.md](REACT.md) for each hook's behaviour.
+
+Content helpers in the main entry point are `replyTo(message, text)`,
+`withMentions(content, userIds | 'all')` and `mentionsUser(message, userId)`.
 
 ## Errors
 
