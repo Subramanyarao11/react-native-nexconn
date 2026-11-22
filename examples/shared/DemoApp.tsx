@@ -24,24 +24,40 @@ import {
   AreaCode,
   ChannelType,
   ConnectionStatus,
+  FriendApplicationStatus,
+  FriendApplicationType,
+  GroupMemberRole,
   enumName,
   getNexconnClient,
   isNexconnError,
+  withMentions,
   type Channel,
   type ChannelIdentifier,
   type Message,
   type MessageContent,
   type NexconnClient,
+  type OutgoingContent,
 } from 'react-native-nexconn';
 import {
   NexconnProvider,
+  useBlockedUsers,
   useChannelList,
   useConnection,
+  useDraft,
+  useFriendApplications,
+  useFriends,
+  useGroup,
+  useGroupMembers,
+  useMessageSearch,
   useMessages,
   useNexconnClient,
   useNexconnEvent,
+  useOnlineStatus,
   useTotalUnreadCount,
   useTypingUsers,
+  useUnreadMentions,
+  useUsers,
+  type MessageSendState,
 } from 'react-native-nexconn/react';
 
 export interface DemoDefaults {
@@ -325,45 +341,72 @@ function readLabel(state: {
     : 'read';
 }
 
+/** Status line for an own message: send state first, then read state. */
+function ownStatus(send: MessageSendState, read: string): string {
+  switch (send.status) {
+    case 'sending':
+      return send.progress !== undefined
+        ? `sending ${send.progress}%`
+        : 'sending';
+    case 'failed':
+      return send.canRetry ? 'failed · tap to act' : 'failed';
+    case 'canceled':
+      return 'canceled';
+    default:
+      return read || 'sent';
+  }
+}
+
+/** Mentions typed as "@userId" (or "@all") in group messages. */
+function mentionsIn(text: string): string[] | 'all' | undefined {
+  const ids = [...text.matchAll(/@([\w.-]+)/g)].map((m) => m[1] as string);
+  if (ids.includes('all')) return 'all';
+  return ids.length > 0 ? ids : undefined;
+}
+
 function MessageBubble({
   message,
   mine,
-  readLabel: read,
-  onLongPress,
+  senderName,
+  status,
+  selected,
+  onPress,
 }: {
   message: Message;
   mine: boolean;
-  readLabel: string;
-  onLongPress: () => void;
+  senderName: string;
+  status: string;
+  selected: boolean;
+  onPress: () => void;
 }) {
+  const quoted =
+    message.content.type === 'reference' && message.content.referMsg
+      ? contentPreview(message.content.referMsg)
+      : undefined;
   return (
     <Pressable
-      onLongPress={onLongPress}
-      style={[styles.bubble, mine ? styles.mine : styles.theirs]}
+      onPress={onPress}
+      accessibilityLabel={`message ${message.messageId ?? message.clientId}`}
+      style={[
+        styles.bubble,
+        mine ? styles.mine : styles.theirs,
+        selected ? styles.selected : null,
+      ]}
     >
-      {!mine ? <Text style={styles.sender}>{message.senderUserId}</Text> : null}
+      {!mine ? <Text style={styles.sender}>{senderName}</Text> : null}
+      {quoted ? (
+        <Text numberOfLines={1} style={styles.quote}>
+          {quoted}
+        </Text>
+      ) : null}
       <Text>{contentPreview(message.content)}</Text>
       <Text style={styles.meta}>
         {new Date(message.sentTime).toLocaleTimeString()}
         {message.hasChanged ? ' · edited' : ''}
-        {mine
-          ? ` · ${read && message.sentStatus >= 30 ? read : String(enumNameSafe(message.sentStatus))}`
-          : ''}
+        {mine ? ` · ${status}` : ''}
       </Text>
     </Pressable>
   );
-}
-
-function enumNameSafe(value: number): string {
-  const names: Record<number, string> = {
-    10: 'sending',
-    20: 'failed',
-    30: 'sent',
-    40: 'received',
-    50: 'read',
-    70: 'canceled',
-  };
-  return names[value] ?? String(value);
 }
 
 function Chat({
@@ -378,23 +421,61 @@ function Chat({
   const {
     messages,
     receipts,
+    outbox,
     readState,
+    sendState,
     loadOlder,
     send,
+    reply,
+    retry,
+    cancel,
+    discard,
     edit,
-    recall: recallMessage,
+    recall,
     refresh,
     loading,
     error,
   } = useMessages(channel);
   const typing = useTypingUsers(channel);
-  const [text, setText] = useState('');
+  const isGroup = channel.channelType === ChannelType.group;
+  const {
+    draft: text,
+    setDraft: setText,
+    clear: clearDraft,
+  } = useDraft(channel);
+  const mentions = useUnreadMentions(channel);
+  const senders = useUsers(
+    useMemo(
+      () => [
+        ...new Set(
+          messages.flatMap((m) =>
+            m.senderUserId && m.senderUserId !== userId ? [m.senderUserId] : []
+          )
+        ),
+      ],
+      [messages, userId]
+    )
+  );
   const [mediaPath, setMediaPath] = useState('');
   const [status, setStatus] = useState<string | undefined>();
+  const [selected, setSelected] = useState<Message | undefined>();
+  const [replyTarget, setReplyTarget] = useState<Message | undefined>();
+  const [panel, setPanel] = useState<'none' | 'search' | 'members'>('none');
+  const [keyword, setKeyword] = useState('');
+  const search = useMessageSearch(panel === 'search' ? keyword : '', {
+    channel,
+  });
   const inverted = useMemo(() => [...messages].reverse(), [messages]);
+  const nameOf = (id?: string) =>
+    (id && (senders.get(id)?.name || id)) || 'unknown';
 
   useEffect(() => {
-    client.channels.clearUnreadCount(channel).catch(() => undefined);
+    client.channels
+      .clearUnreadCount(channel)
+      .then(() => mentions.refresh())
+      .catch(() => undefined);
+    // mentions.refresh is stable per channel/session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, channel, messages.length]);
 
   useEffect(() => {
@@ -423,94 +504,212 @@ function Chat({
     }
   };
 
-  const sendText = async () => {
-    const body = text.trim();
-    if (!body) return;
-    setText('');
+  const act = async (label: string, fn: () => Promise<unknown>) => {
     try {
-      await send({ type: 'text', text: body }, { needReceipt: true });
+      await fn();
+      setStatus(label);
     } catch (e) {
       setStatus(describeError(e));
     }
+  };
+
+  const sendText = async () => {
+    const body = text.trim();
+    if (!body) return;
+    const target = replyTarget;
+    clearDraft().catch(() => undefined);
+    setReplyTarget(undefined);
+    const mentioned = isGroup ? mentionsIn(body) : undefined;
+    await act('', async () => {
+      if (target) {
+        await reply(target, body, {
+          needReceipt: true,
+          mentionSender: isGroup,
+        });
+      } else {
+        const content: OutgoingContent = { type: 'text', text: body };
+        await send(mentioned ? withMentions(content, mentioned) : content, {
+          needReceipt: true,
+        });
+      }
+    });
   };
 
   const sendFile = async () => {
     const path = mediaPath.trim();
     if (!path) return;
-    try {
-      const isImage = /\.(jpe?g|png|heic|webp)$/i.test(path);
-      // Through the hook so the sender's own bubble appears at once.
-      await send(
+    const isImage = /\.(jpe?g|png|heic|webp)$/i.test(path);
+    setMediaPath('');
+    // Upload progress shows on the bubble (sendState).
+    await act('Uploaded', () =>
+      send(
         isImage
           ? { type: 'image', localPath: path }
-          : { type: 'file', localPath: path },
-        { onProgress: (p) => setStatus(`Uploading ${p}%`) }
-      );
-      setStatus('Uploaded');
-      setMediaPath('');
-    } catch (e) {
-      setStatus(describeError(e));
-    }
+          : { type: 'file', localPath: path }
+      )
+    );
   };
 
-  const recall = async (message: Message) => {
-    try {
-      await recallMessage(message);
-      setStatus('Recalled');
-    } catch (e) {
-      setStatus(describeError(e));
+  const actions = (m: Message): { title: string; run: () => void }[] => {
+    const mine = m.senderUserId === userId;
+    const state = sendState(m);
+    const close = () => setSelected(undefined);
+    const list: { title: string; run: () => void }[] = [];
+    if (mine && state.status === 'sending' && outbox.has(m.clientId)) {
+      list.push({
+        title: 'Cancel upload',
+        run: () => act('Canceled', () => cancel(m)).finally(close),
+      });
     }
-  };
-
-  // Long-press on an own message: edit it with the composer text if there is
-  // any, otherwise recall it.
-  const onLongPressMessage = async (message: Message) => {
-    const body = text.trim();
-    if (!body || message.content.type !== 'text') return recall(message);
-    try {
-      await edit(message, { type: 'text', text: body });
-      setText('');
-      setStatus('Edited');
-    } catch (e) {
-      setStatus(describeError(e));
+    if (mine && state.canRetry) {
+      list.push({
+        title: 'Retry',
+        run: () => act('Resent', () => retry(m)).finally(close),
+      });
     }
+    if (mine && (state.status === 'failed' || state.status === 'canceled')) {
+      list.push({
+        title: 'Discard',
+        run: () => act('Discarded', () => discard(m)).finally(close),
+      });
+    }
+    if (m.messageId && state.status === 'sent') {
+      list.push({
+        title: 'Reply',
+        run: () => {
+          setReplyTarget(m);
+          close();
+        },
+      });
+      if (mine && m.content.type === 'text') {
+        list.push({
+          title: 'Edit with composer text',
+          run: () => {
+            const body = text.trim();
+            if (!body) {
+              setStatus('Type the new text first');
+              return;
+            }
+            act('Edited', async () => {
+              await edit(m, { type: 'text', text: body });
+              await clearDraft();
+            }).finally(close);
+          },
+        });
+      }
+      if (mine) {
+        list.push({
+          title: 'Recall',
+          run: () => act('Recalled', () => recall(m)).finally(close),
+        });
+      }
+    }
+    return list;
   };
 
   return (
     <View style={styles.flex}>
       <View style={styles.inline}>
         <Button title="‹ Back" onPress={onBack} />
-        <Text style={styles.h2}>
-          {channel.channelType === ChannelType.group ? '# ' : ''}
-          {channel.channelId}
+        <Text style={[styles.h2, styles.flex]} numberOfLines={1}>
+          {isGroup ? '# ' : ''}
+          {isGroup ? channel.channelId : nameOf(channel.channelId)}
         </Text>
+        <Button
+          title="Search"
+          onPress={() => setPanel(panel === 'search' ? 'none' : 'search')}
+        />
+        {isGroup ? (
+          <Button
+            title="Members"
+            onPress={() => setPanel(panel === 'members' ? 'none' : 'members')}
+          />
+        ) : null}
         <Button title="Refresh" onPress={refresh} />
       </View>
+      {panel === 'members' ? <GroupPanel groupId={channel.channelId} /> : null}
+      {panel === 'search' ? (
+        <View style={styles.panel}>
+          <TextInput
+            style={styles.input}
+            placeholder="Search this chat"
+            value={keyword}
+            onChangeText={setKeyword}
+            autoCapitalize="none"
+          />
+          {search.items.slice(0, 20).map((m) => (
+            <Text key={`${m.clientId}:${m.messageId ?? ''}`} numberOfLines={1}>
+              {new Date(m.sentTime).toLocaleString()} ·{' '}
+              {contentPreview(m.content)}
+            </Text>
+          ))}
+          {search.keyword && !search.loading && search.items.length === 0 ? (
+            <Text style={styles.hint}>No matches.</Text>
+          ) : null}
+          {search.hasMore && search.items.length > 0 ? (
+            <Button title="More results" onPress={search.loadMore} />
+          ) : null}
+        </View>
+      ) : null}
+      {mentions.messages.length > 0 ? (
+        <Text style={styles.mention}>
+          {mentions.messages.length} unread mention
+          {mentions.messages.length > 1 ? 's' : ''} of you
+        </Text>
+      ) : null}
       {typing.length > 0 ? (
         <Text style={styles.hint}>
-          {typing.map((t) => t.userId).join(', ')} typing…
+          {typing.map((t) => nameOf(t.userId)).join(', ')} typing…
         </Text>
       ) : null}
       {error ? <Text style={styles.error}>{describeError(error)}</Text> : null}
       <FlatList
         inverted
         data={inverted}
-        extraData={receipts}
+        extraData={[receipts, outbox, selected, senders]}
         keyExtractor={(m) => `${m.clientId}:${m.messageId ?? ''}`}
-        renderItem={({ item }) => (
-          <MessageBubble
-            message={item}
-            mine={item.senderUserId === userId}
-            readLabel={
-              item.senderUserId === userId ? readLabel(readState(item)) : ''
-            }
-            onLongPress={() => onLongPressMessage(item)}
-          />
-        )}
+        renderItem={({ item }) => {
+          const mine = item.senderUserId === userId;
+          return (
+            <MessageBubble
+              message={item}
+              mine={mine}
+              senderName={nameOf(item.senderUserId)}
+              status={
+                mine
+                  ? ownStatus(sendState(item), readLabel(readState(item)))
+                  : ''
+              }
+              selected={selected?.clientId === item.clientId}
+              onPress={() =>
+                setSelected(
+                  selected?.clientId === item.clientId ? undefined : item
+                )
+              }
+            />
+          );
+        }}
         onEndReached={loadOlder}
         ListFooterComponent={loading ? <ActivityIndicator /> : undefined}
       />
+      {selected ? (
+        <View style={[styles.inline, styles.wrap]}>
+          {actions(selected).map((a) => (
+            <Button key={a.title} title={a.title} onPress={a.run} />
+          ))}
+          <Button title="Close" onPress={() => setSelected(undefined)} />
+        </View>
+      ) : null}
       {status ? <Text style={styles.hint}>{status}</Text> : null}
+      {replyTarget ? (
+        <View style={styles.inline}>
+          <Text style={[styles.quote, styles.flex]} numberOfLines={1}>
+            Replying to {nameOf(replyTarget.senderUserId)}:{' '}
+            {contentPreview(replyTarget.content)}
+          </Text>
+          <Button title="×" onPress={() => setReplyTarget(undefined)} />
+        </View>
+      ) : null}
       <View style={styles.inline}>
         <TextInput
           style={[styles.input, styles.flex]}
@@ -528,14 +727,245 @@ function Chat({
       <View style={styles.inline}>
         <TextInput
           style={[styles.input, styles.flex]}
-          placeholder="Message"
+          placeholder={isGroup ? 'Message (@userId to mention)' : 'Message'}
           value={text}
           onChangeText={onChangeText}
           onSubmitEditing={sendText}
+          autoCapitalize="none"
         />
         <Button title="Send" disabled={!text.trim()} onPress={sendText} />
       </View>
     </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Group panel
+// ---------------------------------------------------------------------------
+
+function roleName(role: number): string {
+  return (
+    { [GroupMemberRole.owner]: 'owner', [GroupMemberRole.admin]: 'admin' }[
+      role
+    ] ?? 'member'
+  );
+}
+
+function GroupPanel({ groupId }: { groupId: string }) {
+  const client = useNexconnClient();
+  const { userId } = useConnection();
+  const { group, error: groupError } = useGroup(groupId);
+  const members = useGroupMembers(groupId, { pageSize: 50 });
+  const [invitee, setInvitee] = useState('');
+  const [note, setNote] = useState<string | undefined>();
+  const myRole = members.items.find((m) => m.userId === userId)?.role;
+  const canManage =
+    myRole === GroupMemberRole.owner || myRole === GroupMemberRole.admin;
+
+  const run = async (label: string, fn: () => Promise<unknown>) => {
+    try {
+      const result = await fn();
+      setNote(typeof result === 'number' ? `${label} (code ${result})` : label);
+    } catch (e) {
+      setNote(describeError(e));
+    }
+  };
+
+  return (
+    <View style={styles.panel}>
+      <Text style={styles.h3}>
+        {group ? `${group.groupName} · ${group.membersCount} members` : groupId}
+      </Text>
+      {groupError ? (
+        <Text style={styles.error}>{describeError(groupError)}</Text>
+      ) : null}
+      {members.items.map((m) => (
+        <View key={m.userId} style={styles.inline}>
+          <Text style={styles.flex}>
+            {m.nickname || m.name || m.userId} · {roleName(m.role)}
+          </Text>
+          {canManage && m.userId !== userId && m.role === 1 ? (
+            <Button
+              title="Make admin"
+              onPress={() =>
+                run('Admin added', () =>
+                  client.groups.addAdmins(groupId, [m.userId])
+                )
+              }
+            />
+          ) : null}
+          {myRole === GroupMemberRole.owner && m.role === 2 ? (
+            <Button
+              title="Remove admin"
+              onPress={() =>
+                run('Admin removed', () =>
+                  client.groups.removeAdmins(groupId, [m.userId])
+                )
+              }
+            />
+          ) : null}
+          {canManage && m.userId !== userId && m.role !== 3 ? (
+            <Button
+              title="Kick"
+              onPress={() =>
+                run('Kicked', () =>
+                  client.groups.kickMembers(groupId, [m.userId])
+                )
+              }
+            />
+          ) : null}
+        </View>
+      ))}
+      {members.hasMore && members.items.length > 0 ? (
+        <Button title="More members" onPress={members.loadMore} />
+      ) : null}
+      <View style={styles.inline}>
+        <TextInput
+          style={[styles.input, styles.flex]}
+          placeholder="Invite user ID"
+          value={invitee}
+          onChangeText={setInvitee}
+          autoCapitalize="none"
+        />
+        <Button
+          title="Invite"
+          disabled={!invitee.trim()}
+          onPress={() =>
+            run('Invited', () =>
+              client.groups.inviteUsers(groupId, [invitee.trim()])
+            ).then(() => setInvitee(''))
+          }
+        />
+        <Button
+          title="Leave"
+          onPress={() => run('Left group', () => client.groups.leave(groupId))}
+        />
+      </View>
+      {note ? <Text style={styles.hint}>{note}</Text> : null}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Contacts
+// ---------------------------------------------------------------------------
+
+function Contacts({ onOpen }: { onOpen: (c: ChannelIdentifier) => void }) {
+  const client = useNexconnClient();
+  const { friends, error, refresh } = useFriends();
+  const online = useOnlineStatus(
+    useMemo(() => friends.map((f) => f.userId), [friends])
+  );
+  const applications = useFriendApplications({
+    applicationStatuses: [FriendApplicationStatus.unhandled],
+  });
+  const blocked = useBlockedUsers();
+  const [other, setOther] = useState('');
+  const [note, setNote] = useState<string | undefined>();
+
+  const run = async (label: string, fn: () => Promise<unknown>) => {
+    try {
+      const result = await fn();
+      setNote(typeof result === 'number' ? `${label} (code ${result})` : label);
+    } catch (e) {
+      setNote(describeError(e));
+    }
+  };
+  const id = other.trim();
+
+  return (
+    <ScrollView contentContainerStyle={styles.form}>
+      <View style={styles.inline}>
+        <TextInput
+          style={[styles.input, styles.flex]}
+          placeholder="User ID"
+          value={other}
+          onChangeText={setOther}
+          autoCapitalize="none"
+        />
+        <Button
+          title="Add friend"
+          disabled={!id}
+          onPress={() => run('Request sent', () => client.users.addFriend(id))}
+        />
+        <Button
+          title="Block"
+          disabled={!id}
+          onPress={() => run('Blocked', () => blocked.block(id))}
+        />
+      </View>
+      {note ? <Text style={styles.hint}>{note}</Text> : null}
+      {error ? <Text style={styles.error}>{describeError(error)}</Text> : null}
+
+      <Text style={styles.h3}>Friends ({friends.length})</Text>
+      {friends.map((f) => (
+        <Pressable
+          key={f.userId}
+          style={styles.row}
+          onPress={() =>
+            onOpen({ channelType: ChannelType.direct, channelId: f.userId })
+          }
+        >
+          <Text style={styles.flex}>
+            {f.remark || f.name || f.userId}
+            {online.get(f.userId)?.isOnline ? ' · online' : ''}
+          </Text>
+          <Button
+            title="Remove"
+            onPress={() =>
+              run('Removed', () => client.users.removeFriends([f.userId]))
+            }
+          />
+        </Pressable>
+      ))}
+      <Button title="Reload friends" onPress={refresh} />
+
+      <Text style={styles.h3}>Pending requests</Text>
+      {applications.items.length === 0 ? (
+        <Text style={styles.hint}>None.</Text>
+      ) : null}
+      {applications.items.map((a) => (
+        <View key={`${a.applicationType}:${a.userId}`} style={styles.inline}>
+          <Text style={styles.flex}>
+            {a.name || a.userId} ·{' '}
+            {a.applicationType === FriendApplicationType.received
+              ? 'wants to be friends'
+              : 'request sent'}
+          </Text>
+          {a.applicationType === FriendApplicationType.received ? (
+            <>
+              <Button
+                title="Accept"
+                onPress={() =>
+                  run('Accepted', () =>
+                    client.users.acceptFriendApplication(a.userId)
+                  )
+                }
+              />
+              <Button
+                title="Refuse"
+                onPress={() =>
+                  run('Refused', () =>
+                    client.users.refuseFriendApplication(a.userId)
+                  )
+                }
+              />
+            </>
+          ) : null}
+        </View>
+      ))}
+
+      <Text style={styles.h3}>Blocked ({blocked.userIds.length})</Text>
+      {blocked.userIds.map((u) => (
+        <View key={u} style={styles.inline}>
+          <Text style={styles.flex}>{u}</Text>
+          <Button
+            title="Unblock"
+            onPress={() => run('Unblocked', () => blocked.unblock(u))}
+          />
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -658,7 +1088,7 @@ function Playground() {
 // ---------------------------------------------------------------------------
 
 function Signed() {
-  const [tab, setTab] = useState<'chats' | 'playground'>('chats');
+  const [tab, setTab] = useState<'chats' | 'contacts' | 'playground'>('chats');
   const [open, setOpen] = useState<ChannelIdentifier | undefined>();
   const unread = useTotalUnreadCount();
   useNexconnEvent('messageReceived', () => undefined);
@@ -670,9 +1100,12 @@ function Signed() {
           title={`Chats${unread ? ` (${unread})` : ''}`}
           onPress={() => setTab('chats')}
         />
+        <Button title="Contacts" onPress={() => setTab('contacts')} />
         <Button title="Playground" onPress={() => setTab('playground')} />
       </View>
-      {tab === 'chats' ? <Conversations onOpen={setOpen} /> : <Playground />}
+      {tab === 'chats' ? <Conversations onOpen={setOpen} /> : null}
+      {tab === 'contacts' ? <Contacts onOpen={setOpen} /> : null}
+      {tab === 'playground' ? <Playground /> : null}
     </View>
   );
 }
@@ -786,6 +1219,27 @@ const styles = StyleSheet.create({
   theirs: { alignSelf: 'flex-start', backgroundColor: '#f1f1f1' },
   sender: { fontSize: 11, color: '#555', marginBottom: 2 },
   meta: { fontSize: 10, color: '#777', marginTop: 2 },
+  selected: { borderWidth: 2, borderColor: '#1565c0' },
+  quote: {
+    fontSize: 11,
+    color: '#555',
+    borderLeftWidth: 2,
+    borderColor: '#999',
+    paddingLeft: 6,
+    marginBottom: 2,
+  },
+  mention: {
+    color: '#1565c0',
+    fontWeight: '600',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  panel: {
+    padding: 12,
+    gap: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#ddd',
+  },
   button: {
     backgroundColor: '#1565c0',
     paddingHorizontal: 12,
