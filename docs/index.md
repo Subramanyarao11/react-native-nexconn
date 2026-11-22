@@ -13,8 +13,8 @@ hero:
       text: Get started
       link: /guide/quickstart
     - theme: alt
-      text: React hooks
-      link: /guide/react
+      text: Project overview
+      link: /overview
     - theme: alt
       text: GitHub
       link: https://github.com/Subramanyarao11/react-native-nexconn

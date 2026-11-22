@@ -18,6 +18,7 @@ export default defineConfig({
   themeConfig: {
     logo: '/logo.svg',
     nav: [
+      { text: 'Overview', link: '/overview' },
       { text: 'Guide', link: '/guide/quickstart' },
       { text: 'Hooks', link: '/guide/react' },
       { text: 'API', link: '/guide/api' },
@@ -38,6 +39,7 @@ export default defineConfig({
       {
         text: 'Guide',
         items: [
+          { text: 'Project overview', link: '/overview' },
           { text: 'Quickstart', link: '/guide/quickstart' },
           { text: 'Client API', link: '/guide/api' },
           { text: 'React hooks', link: '/guide/react' },

@@ -23,7 +23,7 @@ On top of that it gives you:
 > not verified yet. See [verification status](docs/reference/status.md).
 > Expo Go is not supported.
 
-**[Documentation →](https://subramanyarao11.github.io/react-native-nexconn/)**
+**[Documentation →](https://subramanyarao11.github.io/react-native-nexconn/)** · [Project overview](docs/overview.md)
 
 ## Install
 
